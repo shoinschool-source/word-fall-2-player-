@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Drop Game - 2P Battle Mode</title>
+    <!-- PeerJS WebRTC Library -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=M+PLUS+Rounded+1c:wght@700;900&display=swap');
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'M PLUS Rounded 1c', 'Fredoka One', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1f1147, #3b1b6e);
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            overflow-y: auto; 
+            padding: 20px 10px;
+        }
+
+        #game-container {
+            width: 760px;
+            max-width: 100%;
+            background-color: rgba(25, 15, 55, 0.95);
+            border-radius: 24px;
+            padding: 18px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7), inset 0 2px 6px rgba(255, 255, 255, 0.2);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border: 4px solid #ff7b00;
+            margin: auto;
+        }
+
+        .screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            color: #ffe600;
+            font-size: 38px;
+            text-shadow: 3px 3px 0px #ff0055, 5px 5px 15px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        .btn {
+            background: linear-gradient(to bottom, #ff3366, #cc0044);
+            color: white;
+            border: 3px solid #ffcc00;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 900;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.2s;
+            box-shadow: 0 6px 0 #990033, 0 8px 15px rgba(0,0,0,0.4);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            margin: 5px;
+        }
+
+        .btn:hover {
+            filter: brightness(1.1);
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #990033, 0 4px 8px rgba(0,0,0,0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(to bottom, #00ccff, #0066cc);
+            border-color: #ffff00;
+            box-shadow: 0 6px 0 #003366, 0 8px 15px rgba(0,0,0,0.4);
+        }
+
+        .btn-battle {
+            background: linear-gradient(to bottom, #a855f7, #6b21a8);
+            border-color: #f0abfc;
+            box-shadow: 0 6px 0 #581c87, 0 8px 15px rgba(0,0,0,0.4);
+        }
+
+        .admin-form-group {
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid #00ffff;
+            border-radius: 14px;
+            padding: 15px;
+            width: 100%;
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .admin-control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            font-weight: 900;
+        }
+
+        .admin-control-row label {
+            color: #00ffff;
+        }
+
+        .admin-control-row input, .admin-control-row select {
+            background: #11082b;
+            border: 2px solid #ffcc00;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-weight: 900;
+            font-size: 14px;
+            width: 140px;
+            text-align: center;
+        }
+
+        #qr-display-box {
+            background: #fff;
+            padding: 12px;
+            border-radius: 14px;
+            display: inline-block;
+            margin: 10px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+
+        #qr-display-box img {
+            display: block;
+            width: 160px;
+            height: 160px;
+        }
+
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 5px;
+            font-size: 15px;
+            font-weight: 900;
+            color: #ffff00;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        #prominent-timer-bar {
+            width: 100%;
+            background: linear-gradient(to bottom, #ff0055, #990033);
+            color: white;
+            text-align: center;
+            padding: 6px;
+            font-weight: 900;
+            font-size: 16px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            border: 2px solid #ffcc00;
+            box-shadow: 0 3px 0 #660022;
+        }
+
+        .game-main-layout {
+            display: flex;
+            gap: 15px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #right-sidebar {
+            width: 210px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #opponent-hud {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #a855f7;
+            border-radius: 14px;
+            padding: 10px;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 900;
+            color: #f0abfc;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Danger Meter Styles */
+        .danger-meter-container {
+            width: 100%;
+            background-color: #1a0b2e;
+            border: 2px solid #581c87;
+            border-radius: 10px;
+            height: 18px;
+            margin-top: 6px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        #opp-danger-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(to right, #22c55e, #eab308);
+            transition: width 0.4s ease, background 0.4s ease;
+        }
+
+        #opp-danger-bar.warning {
+            background: linear-gradient(to right, #eab308, #f97316);
+        }
+
+        #opp-danger-bar.critical {
+            background: linear-gradient(to right, #f97316, #ef4444);
+            animation: pulse-danger 0.6s infinite alternate;
+        }
+
+        @keyframes pulse-danger {
+            0% { filter: brightness(1); }
+            100% { filter: brightness(1.5); }
+        }
+
+        .danger-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: #fff;
+            text-shadow: 1px 1px 2px #000;
+            font-weight: 900;
+        }
+
+        #side-msg-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .side-message-box {
+            background: rgba(20, 10, 40, 0.95);
+            border: 3px solid #ff00ea;
+            border-radius: 16px;
+            padding: 12px 8px;
+            font-size: 12px;
+            font-weight: 900;
+            text-align: center;
+            color: #00ffff;
+            text-shadow: 1px 1px 2px #000;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+            box-shadow: 0 6px 15px rgba(255,0,234,0.3);
+            width: 100%;
+        }
+
+        .side-message-box.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        #tetris-matrix {
+            width: 480px;
+            height: 440px;
+            border: 4px solid #ffcc00;
+            border-radius: 18px;
+            position: relative;
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            grid-template-rows: repeat(10, 1fr);
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
+            transition: background 0.5s ease;
+            flex-shrink: 0;
+        }
+
+        .bg-level-1 { background: radial-gradient(circle, #2a1b54 0%, #140a2b 100%); }
+        .bg-level-2 { background: radial-gradient(circle, #1e3a5f 0%, #0d1b2a 100%); }
+        .bg-level-3 { background: radial-gradient(circle, #4a154b 0%, #1a051d 100%); }
+
+        .grid-cell {
+            border: 1px dashed rgba(255, 255, 255, 0.12);
+        }
+
+        .word-block, .shelf-tile {
+            position: absolute;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 16px;
+            font-weight: 900;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: inset 0 3px 6px rgba(255,255,255,0.6), 0 4px 8px rgba(0,0,0,0.4);
+            text-align: center;
+            padding: 2px 4px;
+            white-space: nowrap;
+            border: 2px solid rgba(255,255,255,0.8);
+            font-size: 11px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .type-subject { background: radial-gradient(circle at 30% 30%, #6366f1, #4338ca); color: #fff; }
+        .type-verb { background: radial-gradient(circle at 30% 30%, #10b981, #047857); color: #fff; }
+        .type-object { background: radial-gradient(circle at 30% 30%, #f97316, #c2410c); color: #fff; }
+        .type-preposition { background: radial-gradient(circle at 30% 30%, #facc15, #ca8a04); color: #1a1a2e; border-color: #fff; }
+        .type-timeplace { background: radial-gradient(circle at 30% 30%, #ec4899, #be185d); color: #fff; }
+        .type-garbage { background: radial-gradient(circle at 30% 30%, #64748b, #334155); color: #cbd5e1; border-color: #94a3b8; }
+
+        #sentence-zone {
+            width: 100%;
+            min-height: 52px;
+            background-color: rgba(15, 10, 35, 0.8);
+            border: 3px dashed #00ffff;
+            border-radius: 14px;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            padding: 6px;
+            gap: 6px;
+            flex-wrap: wrap;
+            position: relative;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        .drop-zone-placeholder {
+            color: #a5b4fc;
+            font-size: 13px;
+            font-weight: 700;
+            width: 100%;
+            text-align: center;
+        }
+
+        .shelf-tile {
+            position: relative;
+            height: 34px;
+            padding: 0 8px;
+            border-radius: 12px;
+            white-space: nowrap;
+            font-size: 11px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+            width: 100%;
+        }
+
+        .controls .btn {
+            flex: 1;
+            padding: 8px;
+            font-size: 15px;
+        }
+
+        .feedback-msg {
+            margin-top: 4px;
+            font-size: 13px;
+            font-weight: 900;
+            min-height: 18px;
+            text-align: center;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        .feedback-success { color: #4ade80; }
+        .feedback-error { color: #f87171; }
+
+        #modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 24px;
+            z-index: 100;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #241445, #3c1e6e);
+            padding: 24px;
+            border-radius: 20px;
+            border: 3px solid #00ffff;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            text-align: left;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+        }
+
+        .modal-content h2 {
+            color: #ffe600;
+            font-size: 22px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        .modal-content p {
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        #game-over-banner {
+            position: absolute;
+            top: 40%;
+            width: 100%;
+            text-align: center;
+            font-size: 32px;
+            font-weight: 900;
+            color: #ff3366;
+            text-shadow: 3px 3px 0px #000, 0 0 15px rgba(255,0,0,0.8);
+            display: none;
+            z-index: 50;
+        }
+
+        #game-over-banner.show { display: block; }
+
+        #results-modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.92);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 24px;
+            z-index: 110;
+        }
+
+        .results-content {
+            background: linear-gradient(135deg, #241445, #3c1e6e);
+            padding: 20px;
+            border-radius: 20px;
+            border: 3px solid #ff3366;
+            width: 92%;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+
+        /* Animated Side-by-Side Comparison Layout */
+        .tally-winner-banner {
+            font-size: 24px;
+            font-weight: 900;
+            color: #ffe600;
+            text-shadow: 2px 2px 0px #ff0055;
+            margin-bottom: 12px;
+            min-height: 36px;
+        }
+
+        .tally-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .tally-card {
+            background: rgba(10, 5, 25, 0.7);
+            border: 2px solid #00ffff;
+            border-radius: 14px;
+            padding: 10px;
+            text-align: left;
+            font-size: 11px;
+        }
+
+        .tally-card.opponent {
+            border-color: #a855f7;
+        }
+
+        .tally-card h3 {
+            font-size: 14px;
+            color: #ffe600;
+            margin-bottom: 6px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 4px;
+        }
+
+        .tally-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+            font-weight: 700;
+        }
+
+        .tally-val {
+            font-weight: 900;
+            color: #4ade80;
+        }
+
+        .tally-total-row {
+            margin-top: 8px;
+            padding-top: 6px;
+            border-top: 2px dashed #ffcc00;
+            font-size: 14px;
+            font-weight: 900;
+            color: #ffe600;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- START SCREEN -->
+    <div id="start-screen" class="screen">
+        <h1>Word Drop</h1>
+        <p style="margin-bottom: 15px; text-align: center; color: #cbd5e1; font-size: 13px; font-weight: 700;">
+            1人プレイまたは2人対戦（レベル1〜3バトル）を選択してください。
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px;">
+            <button class="btn btn-battle" onclick="openBattleLobby()">⚔️ 2人対戦 (2P Battle)</button>
+            <button class="btn btn-secondary" onclick="startDirectPlay()">1人プレイ (Single Play)</button>
+            <button class="btn" onclick="openAdminScreen()">教師用設定 (Admin)</button>
+        </div>
+    </div>
+
+    <!-- 2P BATTLE LOBBY SCREEN -->
+    <div id="battle-screen" class="screen hidden">
+        <h1>2P Battle Mode</h1>
+        <p id="battle-status" style="font-size: 13px; font-weight: 700; color: #00ffff; margin-bottom: 10px;">接続中...</p>
+        
+        <div id="lobby-host-box" class="hidden" style="text-align:center;">
+            <p style="font-size: 11px; color: #cbd5e1;">相手にこのQRコードを読み取ってもらうか、ルームIDを教えてください：</p>
+            <div id="qr-display-box">
+                <img id="battle-qr-img" alt="2P Battle QR">
+            </div>
+            <p id="battle-peer-id" style="font-size: 14px; font-weight: 900; color: #ffe600; margin-bottom: 10px;"></p>
+        </div>
+
+        <div id="lobby-join-box" class="hidden" style="display:flex; flex-direction:column; gap:8px; width:100%; max-width:300px;">
+            <input type="text" id="join-id-input" placeholder="相手のルームIDを入力" style="padding:10px; border-radius:8px; border:2px solid #00ffff; text-align:center; font-weight:900;">
+            <button class="btn btn-battle" onclick="connectToHost()">接続して対戦開始</button>
+        </div>
+
+        <button class="btn btn-secondary" onclick="backToStart()" style="margin-top: 15px;">もどる</button>
+    </div>
+
+    <!-- ADMIN SCREEN -->
+    <div id="admin-screen" class="screen hidden">
+        <h1>Teacher Admin</h1>
+        <div class="admin-form-group">
+            <div class="admin-control-row">
+                <label for="admin-minutes">1ラウンドの時間:</label>
+                <select id="admin-minutes">
+                    <option value="1">1分 (スプリント)</option>
+                    <option value="2">2分</option>
+                    <option value="3" selected>3分 (標準)</option>
+                </select>
+            </div>
+            <div class="admin-control-row">
+                <label for="admin-speed-1">全レベル 落下速度 (ms):</label>
+                <input type="number" id="admin-speed-1" value="2800" step="100">
+            </div>
+        </div>
+        <button class="btn btn-secondary" onclick="backToStart()" style="width: 100%;">もどる</button>
+    </div>
+
+    <!-- PLAY SCREEN -->
+    <div id="play-screen" class="screen hidden">
+        <div class="header-bar">
+            <span id="score-display">スコア: 0 (🔥 x1.0)</span>
+            <span id="level-display" style="color:#00ffff;">LEVEL 1</span>
+            <span id="height-display">ブロック数: 0</span>
+        </div>
+
+        <div id="prominent-timer-bar">
+            TIME LEFT: <span id="prominent-timer-display">03:00</span>
+        </div>
+
+        <div class="game-main-layout">
+            <div class="left-panel" style="position: relative;">
+                <div id="tetris-matrix" class="bg-level-1"></div>
+                <div id="game-over-banner">GAME OVER</div>
+            </div>
+
+            <div id="right-sidebar">
+                <div id="opponent-hud" class="hidden">
+                    <p style="color:#a855f7;">VS OPPONENT</p>
+                    <p style="margin-top: 2px;">スコア: <span id="opp-score" style="color:#ffe600; font-size:14px;">0</span></p>
+                    <p>ブロック: <span id="opp-blocks">0</span>/60</p>
+                    
+                    <!-- Opponent Board Height Danger Meter -->
+                    <div style="margin-top: 6px;">
+                        <span style="font-size: 10px; color: #cbd5e1;">相手の盤面危険度:</span>
+                        <div class="danger-meter-container">
+                            <div id="opp-danger-bar"></div>
+                            <div class="danger-label" id="opp-danger-text">0%</div>
+                        </div>
+                    </div>
+                </div>
+                <div id="side-msg-container"></div>
+            </div>
+        </div>
+
+        <div id="sentence-zone">
+            <span class="drop-zone-placeholder">ブロックをタップして英文を組み立てる...</span>
+        </div>
+
+        <div class="feedback-msg" id="feedback-msg"></div>
+
+        <div class="controls">
+            <button class="btn btn-secondary" onclick="clearShelf()">クリア</button>
+            <button class="btn" onclick="checkAnswer()">判定</button>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <div id="modal-overlay" class="hidden">
+        <div class="modal-content">
+            <h2 id="modal-title">レベル 1: 基本 SVO 構文</h2>
+            <p id="modal-body">「主語 ＋ 動詞 ＋ 目的語」で正しい英文を作ろう！連続正解でコンボボーナス！</p>
+            <button class="btn" style="width: 100%; margin-top: 8px;" onclick="closeModal()">スタート</button>
+        </div>
+    </div>
+
+    <div id="results-modal-overlay" class="hidden">
+        <div class="results-content">
+            <div id="tally-winner-banner" class="tally-winner-banner">集計中...</div>
+            
+            <div class="tally-grid">
+                <!-- My Card -->
+                <div class="tally-card">
+                    <h3>YOU</h3>
+                    <div class="tally-row"><span>基本点:</span><span class="tally-val" id="my-tally-base">0</span></div>
+                    <div class="tally-row"><span>完走ボーナス:</span><span class="tally-val" id="my-tally-surv">0</span></div>
+                    <div class="tally-row"><span>クリーンボード:</span><span class="tally-val" id="my-tally-clean">0</span></div>
+                    <div class="tally-row"><span>コンボボーナス:</span><span class="tally-val" id="my-tally-streak">0</span></div>
+                    <div class="tally-row"><span>勝利ボーナス:</span><span class="tally-val" id="my-tally-win">0</span></div>
+                    <div class="tally-row tally-total-row"><span>合計:</span><span id="my-tally-total">0</span></div>
+                </div>
+
+                <!-- Opponent Card -->
+                <div class="tally-card opponent">
+                    <h3>OPPONENT</h3>
+                    <div class="tally-row"><span>基本点:</span><span class="tally-val" id="opp-tally-base">0</span></div>
+                    <div class="tally-row"><span>完走ボーナス:</span><span class="tally-val" id="opp-tally-surv">0</span></div>
+                    <div class="tally-row"><span>クリーンボード:</span><span class="tally-val" id="opp-tally-clean">0</span></div>
+                    <div class="tally-row"><span>コンボボーナス:</span><span class="tally-val" id="opp-tally-streak">0</span></div>
+                    <div class="tally-row"><span>勝利ボーナス:</span><span class="tally-val" id="opp-tally-win">0</span></div>
+                    <div class="tally-row tally-total-row"><span>合計:</span><span id="opp-tally-total">0</span></div>
+                </div>
+            </div>
+
+            <button id="next-level-btn" class="btn btn-battle" style="width: 100%;" onclick="advanceToNextLevel()" disabled>集計中...</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Grammar Data Pools ---
+    const SUBJECTS = ["I", "You", "We", "They", "He", "She", "Ken", "Yumi"];
+    
+    const VERB_OBJECT_PAIRS = {
+        "like": ["cats", "dogs", "apples", "soccer"],
+        "likes": ["cats", "dogs", "apples", "soccer"],
+        "play": ["soccer", "tennis", "games", "music"],
+        "plays": ["soccer", "tennis", "games", "music"],
+        "study": ["English", "math", "science"],
+        "studies": ["English", "math", "science"],
+        "eat": ["bananas", "apples", "lunch"],
+        "eats": ["bananas", "apples", "lunch"]
+    };
+
+    const PREPOSITIONS = ["in", "at", "on", "under"];
+    const PLACES = ["the park", "school", "the desk", "the room"];
+
+    const TIME_PHRASES = ["every day", "after school", "on Sunday", "at night"];
+
+    // --- State Variables ---
+    let currentLevel = 1;
+    let currentLevelScore = 0;
+    let cumulativeScore = 0;
+    
+    let opponentScore = 0;
+    let opponentBlocks = 0;
+    let opponentHeightPct = 0;
+    let opponentCumulativeScore = 0;
+
+    let streakCount = 0;
+    let maxStreak = 0;
+    let timeLeft = 180;
+    let customRoundSeconds = 180;
+    let dropIntervalMs = 2800;
+
+    let dropInterval = null;
+    let roundTimerInterval = null;
+    let grid = [];
+    let activeBlocks = [];
+    let shelfTiles = [];
+
+    // PeerJS State
+    let peer = null;
+    let conn = null;
+    let isMultiplayer = false;
+    let isHost = false;
+
+    const COLS = 6;
+    const ROWS = 10;
+
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinId = urlParams.get('join');
+        if (joinId) {
+            openBattleLobby();
+            setTimeout(() => {
+                document.getElementById('join-id-input').value = joinId;
+                connectToHost();
+            }, 1000);
+        }
+    };
+
+    // --- Lobby & Networking ---
+    function openBattleLobby() {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('battle-screen').classList.remove('hidden');
+        document.getElementById('battle-status').innerText = "通信サーバーに接続中...";
+
+        peer = new Peer();
+
+        peer.on('open', (id) => {
+            document.getElementById('battle-status').innerText = "対戦準備完了！相手を招待してください。";
+            document.getElementById('lobby-host-box').classList.remove('hidden');
+            document.getElementById('lobby-join-box').classList.remove('hidden');
+            document.getElementById('battle-peer-id').innerText = `ID: ${id}`;
+
+            const joinUrl = `${window.location.origin}${window.location.pathname}?join=${id}`;
+            document.getElementById('battle-qr-img').src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(joinUrl)}`;
+            isHost = true;
+        });
+
+        peer.on('connection', (connection) => {
+            conn = connection;
+            setupDataChannel();
+            document.getElementById('battle-status').innerText = "相手が接続しました！ゲームを開始します...";
+            setTimeout(() => { startBattleGame(); }, 1500);
+        });
+    }
+
+    function connectToHost() {
+        const hostId = document.getElementById('join-id-input').value.trim();
+        if (!hostId) return;
+        
+        document.getElementById('battle-status').innerText = "相手に接続中...";
+        conn = peer.connect(hostId);
+        setupDataChannel();
+    }
+
+    function setupDataChannel() {
+        conn.on('open', () => {
+            isMultiplayer = true;
+            document.getElementById('battle-status').innerText = "対戦相手と接続成功！";
+            setTimeout(() => { startBattleGame(); }, 1000);
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'ATTACK') {
+                receiveGarbageAttack(data.count);
+            } else if (data.type === 'SYNC') {
+                opponentScore = data.score;
+                opponentBlocks = data.blockCount;
+                opponentHeightPct = data.heightPct;
+                updateOpponentHUD();
+            } else if (data.type === 'NEXT_LEVEL') {
+                startNextLevelLocal(data.level);
+            }
+        });
+    }
+
+    function sendPeerData(data) {
+        if (conn && conn.open) {
+            conn.send(data);
+        }
+    }
+
+    function updateOpponentHUD() {
+        document.getElementById('opp-score').innerText = opponentScore;
+        document.getElementById('opp-blocks').innerText = opponentBlocks;
+
+        const bar = document.getElementById('opp-danger-bar');
+        const text = document.getElementById('opp-danger-text');
+        
+        bar.style.width = opponentHeightPct + '%';
+        text.innerText = Math.round(opponentHeightPct) + '%';
+
+        bar.classList.remove('warning', 'critical');
+        if (opponentHeightPct >= 80) {
+            bar.classList.add('critical');
+            text.innerText = `⚠️ ${Math.round(opponentHeightPct)}% CRITICAL`;
+        } else if (opponentHeightPct >= 50) {
+            bar.classList.add('warning');
+        }
+    }
+
+    function receiveGarbageAttack(count) {
+        showSideMessage(`⚠️ 相手から攻撃！ +${count} 個の邪魔ブロック！`);
+        let distractors = ["stone", "trash", "jam", "dust", "lock"];
+        
+        for (let r = 0; r < ROWS - 1; r++) {
+            for (let c = 0; c < COLS; c++) {
+                grid[r][c] = grid[r + 1][c];
+                if (grid[r][c]) grid[r][c].row = r;
+            }
+        }
+
+        let added = 0;
+        for (let c = 0; c < COLS && added < count; c++) {
+            let word = distractors[Math.floor(Math.random() * distractors.length)];
+            let block = {
+                instanceId: 'gb_' + Math.random().toString(36).substring(2, 9),
+                text: word,
+                type: 'garbage',
+                col: c,
+                row: ROWS - 1
+            };
+            grid[ROWS - 1][c] = block;
+            added++;
+        }
+
+        activeBlocks = [];
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                if (grid[r][c]) activeBlocks.push(grid[r][c]);
+            }
+        }
+        renderGame();
+    }
+
+    function startBattleGame() {
+        document.getElementById('battle-screen').classList.add('hidden');
+        document.getElementById('opponent-hud').classList.remove('hidden');
+        startGame(1);
+    }
+
+    function openAdminScreen() {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('admin-screen').classList.remove('hidden');
+    }
+
+    function backToStart() {
+        document.getElementById('admin-screen').classList.add('hidden');
+        document.getElementById('battle-screen').classList.add('hidden');
+        document.getElementById('start-screen').classList.remove('hidden');
+    }
+
+    function startDirectPlay() {
+        isMultiplayer = false;
+        startGame(1);
+    }
+
+    // --- Game Initialization ---
+    function startGame(level = 1) {
+        currentLevel = level;
+        currentLevelScore = 0;
+        opponentScore = 0;
+        streakCount = 0;
+        maxStreak = 0;
+
+        const adminMins = parseInt(document.getElementById('admin-minutes').value, 10);
+        if (!isNaN(adminMins)) customRoundSeconds = adminMins * 60;
+
+        const speedVal = parseInt(document.getElementById('admin-speed-1').value, 10);
+        if (!isNaN(speedVal)) dropIntervalMs = speedVal;
+
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('play-screen').classList.remove('hidden');
+        document.getElementById('level-display').innerText = `LEVEL ${currentLevel}`;
+
+        const matrix = document.getElementById('tetris-matrix');
+        matrix.className = `bg-level-${currentLevel}`;
+
+        startLevelTimer();
+        buildMatrixGridUI();
+        initializeBottomRows();
+        renderGame();
+
+        if (dropInterval) clearInterval(dropInterval);
+        dropInterval = setInterval(() => { spawnBlock(); }, dropIntervalMs);
+
+        showLevelModal();
+    }
+
+    function initializeBottomRows() {
+        grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+        activeBlocks = [];
+
+        let tempTokens = [];
+        for(let i = 0; i < 12; i++) {
+            let item = generateRandomGrammarBlock();
+            tempTokens.push(item);
+        }
+
+        let tokenIdx = 0;
+        for (let r = ROWS - 2; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                let wordData = tempTokens[tokenIdx++];
+                let newBlock = {
+                    instanceId: 'b_' + Math.random().toString(36).substring(2, 9),
+                    ...wordData,
+                    col: c,
+                    row: r
+                };
+                grid[r][c] = newBlock;
+                activeBlocks.push(newBlock);
+            }
+        }
+    }
+
+    function generateRandomGrammarBlock() {
+        let types = ["subject", "verb", "object"];
+        if (currentLevel >= 2) types.push("preposition", "place");
+        if (currentLevel >= 3) types.push("timeplace");
+
+        let chosenType = types[Math.floor(Math.random() * types.length)];
+        let text = "";
+
+        if (chosenType === "subject") text = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
+        else if (chosenType === "verb") text = Object.keys(VERB_OBJECT_PAIRS)[Math.floor(Math.random() * Object.keys(VERB_OBJECT_PAIRS).length)];
+        else if (chosenType === "object") {
+            let allObjs = [].concat(...Object.values(VERB_OBJECT_PAIRS));
+            text = allObjs[Math.floor(Math.random() * allObjs.length)];
+        } else if (chosenType === "preposition") text = PREPOSITIONS[Math.floor(Math.random() * PREPOSITIONS.length)];
+        else if (chosenType === "place") text = PLACES[Math.floor(Math.random() * PLACES.length)];
+        else if (chosenType === "timeplace") text = TIME_PHRASES[Math.floor(Math.random() * TIME_PHRASES.length)];
+
+        return { text, type: chosenType };
+    }
+
+    function spawnBlock() {
+        let availableCols = [];
+        for(let c = 0; c < COLS; c++) {
+            if (grid[0][c] === null) availableCols.push(c);
+        }
+
+        if (availableCols.length === 0) {
+            triggerGameOver("GAME OVER");
+            return;
+        }
+
+        let targetCol = availableCols[Math.floor(Math.random() * availableCols.length)];
+        let targetRow = -1;
+        for(let r = ROWS - 1; r >= 0; r--) {
+            if (grid[r][targetCol] === null) { targetRow = r; break; }
+        }
+
+        let blockData = generateRandomGrammarBlock();
+        let newBlock = {
+            instanceId: 'b_' + Math.random().toString(36).substring(2, 9),
+            ...blockData,
+            col: targetCol,
+            row: targetRow
+        };
+
+        grid[targetRow][targetCol] = newBlock;
+        activeBlocks.push(newBlock);
+        renderGame();
+    }
+
+    function calculateBoardHeightPct() {
+        let highestOccupiedRow = ROWS;
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                if (grid[r][c] !== null) {
+                    highestOccupiedRow = r;
+                    break;
+                }
+            }
+            if (highestOccupiedRow !== ROWS) break;
+        }
+        let heightRows = ROWS - highestOccupiedRow;
+        return (heightRows / ROWS) * 100;
+    }
+
+    function renderGame() {
+        const matrix = document.getElementById('tetris-matrix');
+        matrix.querySelectorAll('.word-block').forEach(b => b.remove());
+
+        let cellWidth = matrix.clientWidth / COLS;
+        let cellHeight = matrix.clientHeight / ROWS;
+
+        activeBlocks.forEach(block => {
+            const el = document.createElement('div');
+            el.className = `word-block type-${block.type}`;
+            el.innerText = block.text;
+            el.style.left = (block.col * cellWidth) + 3 + 'px';
+            el.style.top = (block.row * cellHeight) + 3 + 'px';
+            el.style.width = (cellWidth - 6) + 'px';
+            el.style.height = (cellHeight - 6) + 'px';
+
+            el.addEventListener('click', () => {
+                let index = activeBlocks.findIndex(b => b.instanceId === block.instanceId);
+                if (index !== -1) {
+                    shelfTiles.push(activeBlocks.splice(index, 1)[0]);
+                    applyGravity();
+                    renderGame();
+                }
+            });
+            matrix.appendChild(el);
+        });
+
+        const zoneEl = document.getElementById('sentence-zone');
+        zoneEl.innerHTML = '';
+        if (shelfTiles.length === 0) {
+            zoneEl.innerHTML = '<span class="drop-zone-placeholder">ブロックをタップして英文を組み立てる...</span>';
+        } else {
+            shelfTiles.forEach(tile => {
+                const el = document.createElement('div');
+                el.className = `shelf-tile type-${tile.type}`;
+                el.innerText = tile.text;
+                el.addEventListener('click', () => {
+                    let index = shelfTiles.findIndex(t => t.instanceId === tile.instanceId);
+                    if (index !== -1) {
+                        activeBlocks.push(shelfTiles.splice(index, 1)[0]);
+                        applyGravity();
+                        renderGame();
+                    }
+                });
+                zoneEl.appendChild(el);
+            });
+        }
+
+        let multiplier = Math.min(1 + Math.max(0, streakCount - 1) * 0.25, 2.0);
+        document.getElementById('score-display').innerText = `スコア: ${currentLevelScore} (🔥 x${multiplier.toFixed(2)})`;
+        document.getElementById('height-display').innerText = `ブロック数: ${activeBlocks.length}`;
+
+        let myHeightPct = calculateBoardHeightPct();
+
+        if (isMultiplayer) {
+            sendPeerData({
+                type: 'SYNC',
+                score: currentLevelScore,
+                blockCount: activeBlocks.length,
+                heightPct: myHeightPct
+            });
+        }
+    }
+
+    function applyGravity() {
+        grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+        for(let c = 0; c < COLS; c++) {
+            let colBlocks = activeBlocks.filter(b => b.col === c);
+            colBlocks.sort((a,b) => b.row - a.row);
+            let writeRow = ROWS - 1;
+            for(let block of colBlocks) {
+                block.row = writeRow;
+                grid[writeRow][c] = block;
+                writeRow--;
+            }
+        }
+    }
+
+    function checkAnswer() {
+        const feedbackEl = document.getElementById('feedback-msg');
+        let len = shelfTiles.length;
+
+        if (len >= 3) {
+            streakCount++;
+            if (streakCount > maxStreak) maxStreak = streakCount;
+
+            let basePoints = 100;
+            let multiplier = Math.min(1 + (streakCount - 1) * 0.25, 2.0);
+            let totalGained = Math.round(basePoints * multiplier);
+
+            currentLevelScore += totalGained;
+
+            if (isMultiplayer) {
+                let attackCount = len === 3 ? 2 : (len === 4 ? 3 : 6);
+                if (streakCount >= 3) attackCount += 1;
+                
+                sendPeerData({ type: 'ATTACK', count: attackCount });
+                showSideMessage(`⚔️ 攻撃! +${attackCount} ブロック (Streak x${multiplier.toFixed(2)})`);
+            }
+
+            feedbackEl.innerText = `正解！ +${totalGained}点 ${streakCount > 1 ? `🔥 (${streakCount} COMBO!)` : ''}`;
+            feedbackEl.className = "feedback-msg feedback-success";
+
+            shelfTiles = [];
+            renderGame();
+        } else {
+            streakCount = 0;
+            feedbackEl.innerText = "不正解！ 3単語以上の正しい文章を作ってください。";
+            feedbackEl.className = "feedback-msg feedback-error";
+            renderGame();
+        }
+    }
+
+    function clearShelf() {
+        if (shelfTiles.length === 0) return;
+        streakCount = 0;
+        activeBlocks.push(...shelfTiles);
+        shelfTiles = [];
+        applyGravity();
+        renderGame();
+    }
+
+    function buildMatrixGridUI() {
+        const matrix = document.getElementById('tetris-matrix');
+        matrix.querySelectorAll('.grid-cell').forEach(el => el.remove());
+        for(let r = 0; r < ROWS; r++) {
+            for(let c = 0; c < COLS; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'grid-cell';
+                matrix.appendChild(cell);
+            }
+        }
+    }
+
+    function startLevelTimer() {
+        timeLeft = customRoundSeconds;
+        document.getElementById('prominent-timer-display').innerText = formatTimerDisplay(timeLeft);
+
+        if (roundTimerInterval) clearInterval(roundTimerInterval);
+
+        roundTimerInterval = setInterval(() => {
+            timeLeft--;
+            document.getElementById('prominent-timer-display').innerText = formatTimerDisplay(timeLeft);
+
+            if (timeLeft <= 0) {
+                clearInterval(roundTimerInterval);
+                clearInterval(dropInterval);
+                showAnimatedTallyModal();
+            }
+        }, 1000);
+    }
+
+    function formatTimerDisplay(sec) {
+        return `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+    }
+
+    // --- Slot Machine Style Animated Tally ---
+    function showAnimatedTallyModal() {
+        document.getElementById('results-modal-overlay').classList.remove('hidden');
+
+        // Reset display values
+        const myIds = ['my-tally-base', 'my-tally-surv', 'my-tally-clean', 'my-tally-streak', 'my-tally-win', 'my-tally-total'];
+        const oppIds = ['opp-tally-base', 'opp-tally-surv', 'opp-tally-clean', 'opp-tally-streak', 'opp-tally-win', 'opp-tally-total'];
+        myIds.concat(oppIds).forEach(id => document.getElementById(id).innerText = '0');
+
+        document.getElementById('tally-winner-banner').innerText = "集計中...";
+        document.getElementById('next-level-btn').disabled = true;
+        document.getElementById('next-level-btn').innerText = "集計中...";
+
+        // Calculate breakdown values
+        let myBase = currentLevelScore;
+        let mySurv = 100;
+        let myClean = ((ROWS * COLS) - activeBlocks.length) * 5;
+        let myStreak = maxStreak * 20;
+
+        let oppBase = opponentScore;
+        let oppSurv = 100;
+        let oppClean = (60 - opponentBlocks) * 5;
+        let oppStreak = 0; // Simplified estimation for peer
+
+        let myPrelimTotal = myBase + mySurv + myClean + myStreak;
+        let oppPrelimTotal = oppBase + oppSurv + oppClean + oppStreak;
+
+        let myWinBonus = 0;
+        let oppWinBonus = 0;
+        let winnerText = "";
+
+        if (myPrelimTotal > oppPrelimTotal) {
+            myWinBonus = 250;
+            winnerText = "👑 あなたの勝利！";
+        } else if (myPrelimTotal < oppPrelimTotal) {
+            oppWinBonus = 250;
+            winnerText = "❌ 相手の勝利...";
+        } else {
+            myWinBonus = 100;
+            oppWinBonus = 100;
+            winnerText = "🤝 引き分け";
+        }
+
+        let steps = [
+            { myKey: 'my-tally-base', oppKey: 'opp-tally-base', myVal: myBase, oppVal: oppBase },
+            { myKey: 'my-tally-surv', oppKey: 'opp-tally-surv', myVal: mySurv, oppVal: oppSurv },
+            { myKey: 'my-tally-clean', oppKey: 'opp-tally-clean', myVal: myClean, oppVal: oppClean },
+            { myKey: 'my-tally-streak', oppKey: 'opp-tally-streak', myVal: myStreak, oppVal: oppStreak },
+            { myKey: 'my-tally-win', oppKey: 'opp-tally-win', myVal: myWinBonus, oppVal: oppWinBonus }
+        ];
+
+        let currentStepIndex = 0;
+        let myRunningTotal = 0;
+        let oppRunningTotal = 0;
+
+        function stepTicker() {
+            if (currentStepIndex < steps.length) {
+                let item = steps[currentStepIndex];
+                
+                // Rollup animation
+                animateValue(item.myKey, 0, item.myVal, 400);
+                animateValue(item.oppKey, 0, item.oppVal, 400);
+
+                myRunningTotal += item.myVal;
+                oppRunningTotal += item.oppVal;
+
+                animateValue('my-tally-total', parseInt(document.getElementById('my-tally-total').innerText, 10), myRunningTotal, 400);
+                animateValue('opp-tally-total', parseInt(document.getElementById('opp-tally-total').innerText, 10), oppRunningTotal, 400);
+
+                currentStepIndex++;
+                setTimeout(stepTicker, 600);
+            } else {
+                // Finale
+                document.getElementById('tally-winner-banner').innerText = winnerText;
+                cumulativeScore += myRunningTotal;
+                opponentCumulativeScore += oppRunningTotal;
+
+                const btn = document.getElementById('next-level-btn');
+                btn.disabled = false;
+                if (currentLevel < 3) {
+                    btn.innerText = `レベル ${currentLevel + 1} へ進む`;
+                } else {
+                    btn.innerText = "最終結果を発表！";
+                }
+            }
+        }
+
+        setTimeout(stepTicker, 500);
+    }
+
+    function animateValue(id, start, end, duration) {
+        let obj = document.getElementById(id);
+        if (start === end) { obj.innerText = end; return; }
+        let range = end - start;
+        let current = start;
+        let increment = end > start ? 1 : -1;
+        let stepTime = Math.abs(Math.floor(duration / (range || 1)));
+        stepTime = Math.max(stepTime, 15);
+        
+        let timer = setInterval(() => {
+            current += Math.ceil(range / 10);
+            if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+                current = end;
+                clearInterval(timer);
+            }
+            obj.innerText = current;
+        }, stepTime);
+    }
+
+    function advanceToNextLevel() {
+        if (currentLevel < 3) {
+            let nextLvl = currentLevel + 1;
+            if (isMultiplayer) sendPeerData({ type: 'NEXT_LEVEL', level: nextLvl });
+            startNextLevelLocal(nextLvl);
+        } else {
+            showFinalChampionScreen();
+        }
+    }
+
+    function startNextLevelLocal(level) {
+        document.getElementById('results-modal-overlay').classList.add('hidden');
+        startGame(level);
+    }
+
+    function showFinalChampionScreen() {
+        let champText = "";
+        if (cumulativeScore > opponentCumulativeScore) champText = "🏆 総合優勝： YOU!";
+        else if (cumulativeScore < opponentCumulativeScore) champText = "🏆 総合優勝： OPPONENT!";
+        else champText = "🏆 総合結果： DRAW!";
+
+        document.getElementById('tally-winner-banner').innerText = champText;
+        document.getElementById('next-level-btn').innerText = "タイトルへ戻る";
+        document.getElementById('next-level-btn').onclick = () => location.reload();
+    }
+
+    function showSideMessage(txt) {
+        const c = document.getElementById('side-msg-container');
+        const b = document.createElement('div');
+        b.className = 'side-message-box';
+        b.innerText = txt;
+        c.appendChild(b);
+        setTimeout(() => b.classList.add('show'), 50);
+        setTimeout(() => b.remove(), 4000);
+    }
+
+    function showLevelModal() {
+        const titleEl = document.getElementById('modal-title');
+        const bodyEl = document.getElementById('modal-body');
+
+        if (currentLevel === 1) {
+            titleEl.innerText = "レベル 1: 基本 SVO 構文";
+            bodyEl.innerText = "「主語 ＋ 動詞 ＋ 目的語」で正しい英文を作ろう！\n(例: I play soccer)";
+        } else if (currentLevel === 2) {
+            titleEl.innerText = "レベル 2: SVO ＋ 前置詞句";
+            bodyEl.innerText = "基本構文に「前置詞 ＋ 場所」を加えて攻撃力アップ！\n(例: They study English at school)";
+        } else if (currentLevel === 3) {
+            titleEl.innerText = "レベル 3: フル英文 ＋ 時・場所句";
+            bodyEl.innerText = "時間や場所の修飾語を組み合わせて最大コンボを狙おう！\n(例: Ken plays tennis in the park on Sunday)";
+        }
+
+        document.getElementById('modal-overlay').classList.remove('hidden');
+    }
+
+    function closeModal() {
+        document.getElementById('modal-overlay').classList.add('hidden');
+    }
+
+    function triggerGameOver(msg) {
+        clearInterval(dropInterval);
+        clearInterval(roundTimerInterval);
+        document.getElementById('game-over-banner').innerText = msg;
+        document.getElementById('game-over-banner').classList.add('show');
+    }
+</script>
+</body>
+</html>
