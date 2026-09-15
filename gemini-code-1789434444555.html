@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentence Builder Game</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .game-arena {
+      background: #ffffff;
+      padding: 32px;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      text-align: center;
+      max-width: 600px;
+      width: 90%;
+    }
+
+    /* Modal Overlay Styles */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.75);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background-color: #ffffff;
+      padding: 32px;
+      border-radius: 16px;
+      max-width: 500px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+
+    .modal-title {
+      font-size: 1.5rem;
+      margin-bottom: 16px;
+      color: #1e293b;
+    }
+
+    .modal-rules {
+      text-align: left;
+      background-color: #f8fafc;
+      padding: 16px;
+      border-radius: 8px;
+      border-left: 4px solid #2563eb;
+      margin-bottom: 24px;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .start-btn {
+      width: 100%;
+      padding: 14px 24px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #ffffff;
+      background-color: #2563eb;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .start-btn:hover:not(:disabled) {
+      background-color: #1d4ed8;
+    }
+
+    .start-btn:disabled {
+      background-color: #94a3b8;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Game Canvas / Play Area Placeholder -->
+  <div class="game-arena">
+    <h1>対戦ゲーム</h1>
+    <p id="game-status" style="margin-top: 12px; font-weight: bold;">ラウンド開始を待っています…</p>
+  </div>
+
+  <!-- Round Explanation Modal -->
+  <div id="modal-overlay" class="modal-overlay">
+    <div class="modal-content">
+      <h2 id="modal-level-title" class="modal-title">レベル 1</h2>
+      <div id="modal-rules" class="modal-rules">
+        <!-- Rules & examples injected dynamically -->
+      </div>
+      <button id="start-btn" class="start-btn" type="button">スタート</button>
+    </div>
+  </div>
+
+  <script>
+    // Ready State Flags
+    let localPlayerReady = false;
+    let remotePlayerReady = false;
+
+    // DOM References
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalLevelTitle = document.getElementById('modal-level-title');
+    const modalRules = document.getElementById('modal-rules');
+    const startBtn = document.getElementById('start-btn');
+    const gameStatus = document.getElementById('game-status');
+
+    /**
+     * Opens the modal at the start of a round
+     * @param {string} title - e.g., "レベル 1: 基本文型 (SVO)"
+     * @param {string} rulesHtml - Embedded HTML describing structure rules
+     */
+    function showLevelModal(title, rulesHtml) {
+      localPlayerReady = false;
+      remotePlayerReady = false;
+
+      startBtn.disabled = false;
+      startBtn.textContent = 'スタート';
+
+      modalLevelTitle.textContent = title;
+      modalRules.innerHTML = rulesHtml;
+
+      modalOverlay.style.display = 'flex';
+    }
+
+    // Local Player Click Event
+    startBtn.addEventListener('click', () => {
+      localPlayerReady = true;
+
+      // Lock button and switch to Japanese waiting status
+      startBtn.disabled = true;
+      startBtn.textContent = '対戦相手を待っています…';
+
+      // Send status over active PeerJS connection
+      if (typeof dataConnection !== 'undefined' && dataConnection.open) {
+        dataConnection.send({ type: 'PLAYER_READY' });
+      }
+
+      checkStartRound();
+    });
+
+    /**
+     * Attach this to your PeerJS data channel listener:
+     * dataConnection.on('data', (data) => handlePeerData(data));
+     */
+    function handlePeerData(data) {
+      if (data.type === 'PLAYER_READY') {
+        remotePlayerReady = true;
+        checkStartRound();
+      }
+    }
+
+    /**
+     * Closes modal and triggers round start only when both players are ready
+     */
+    function checkStartRound() {
+      if (localPlayerReady && remotePlayerReady) {
+        modalOverlay.style.display = 'none';
+        startRoundTimer();
+      }
+    }
+
+    function startRoundTimer() {
+      gameStatus.textContent = 'ラウンドスタート！語句を並べ替えてください。';
+    }
+
+    // Auto-trigger modal on page load for demonstration
+    window.addEventListener('DOMContentLoaded', () => {
+      const sampleRules = `
+        <p><strong>基本構造:</strong> 主語 (S) + 動詞 (V) + 目的語 (O)</p>
+        <p style="margin-top: 8px;"><strong>例:</strong> <em>I play soccer.</em></p>
+      `;
+      showLevelModal('レベル 1: 基本文型 (SVO)', sampleRules);
+    });
+  </script>
+
+</body>
+</html>
