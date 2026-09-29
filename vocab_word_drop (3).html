@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>単語ドロップ対戦 - 高校生英語対戦ゲーム</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS for P2P connection -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- QRCode JS Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body {
+            background-color: #0d0e15;
+            color: #ffffff;
+            font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+            touch-action: manipulation;
+        }
+
+        .tetris-matrix {
+            position: relative;
+            background-color: #12131c;
+            border: 2px solid #2a2d3d;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .tetris-matrix.shake {
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+
+        .word-block {
+            position: absolute;
+            background-color: #2563eb;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border-radius: 6px;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.3), 0 2px 4px rgba(0,0,0,0.5);
+            padding: 4px;
+            word-break: break-word;
+            line-height: 1.2;
+            transition: transform 0.05s ease;
+        }
+
+        .word-block:active {
+            transform: scale(0.95);
+        }
+
+        .word-block.garbage {
+            background-color: #4b5563 !important;
+            color: #9ca3af !important;
+            border: 1px solid #6b7280;
+            cursor: not-allowed;
+        }
+
+        .type-object { background-color: #059669; }
+        .type-verb { background-color: #dc2626; }
+        .type-preposition { background-color: #d97706; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-start p-4">
+
+    <!-- HTML5 Audio Element referencing root audio directory -->
+    <audio id="bgm-audio" src="audio/soundtrack.mp3" preload="auto" loop></audio>
+
+    <!-- Header -->
+    <header class="w-full max-w-2xl flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
+        <div class="flex items-center gap-2">
+            <span class="text-2xl">⚔️</span>
+            <h1 class="text-xl font-bold text-cyan-400 tracking-wide">単語ドロップ対戦</h1>
+        </div>
+        <div id="role-badge" class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-800 text-gray-400 border border-gray-700">
+            初期設定モード
+        </div>
+    </header>
+
+    <main id="app-container" class="w-full max-w-2xl flex flex-col items-center">
+
+        <!-- =========================================================
+             1. ADMIN SETUP VIEW WITH SOUNDTRACK LINK
+             ========================================================= -->
+        <section id="view-admin" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
+            <h2 class="text-lg font-bold text-amber-400 border-b border-slate-800 pb-2 mb-4 flex items-center gap-2">
+                <span>⚙️</span> 大会ルール・対戦設定 (Admin Setup)
+            </h2>
+
+            <!-- Audio Player Controls for audio/soundtrack.mp3 -->
+            <div class="bg-cyan-950/40 border border-cyan-800/60 p-4 rounded-lg mb-5 space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="text-lg">🎵</span>
+                        <h3 class="font-bold text-cyan-300 text-sm">BGM サウンドトラック設定</h3>
+                    </div>
+                    <span id="audio-status" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-gray-400 border border-slate-700">停止中 (audio/soundtrack.mp3)</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <!-- Play/Pause Controls -->
+                    <div class="flex items-center gap-2">
+                        <button id="btn-toggle-audio" onclick="toggleBGM()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded text-xs transition flex items-center gap-1">
+                            <span>▶️</span> 再生
+                        </button>
+                        <label class="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer">
+                            <input type="checkbox" id="chk-audio-loop" checked onchange="toggleAudioLoop()" class="rounded bg-slate-900 border-slate-700 text-cyan-500">
+                            ループ再生
+                        </label>
+                    </div>
+
+                    <!-- Volume Control -->
+                    <div class="flex items-center gap-2 text-xs text-gray-300">
+                        <span>音量:</span>
+                        <input type="range" id="audio-volume" min="0" max="1" step="0.05" value="0.5" oninput="updateAudioVolume(this.value)" class="w-full accent-cyan-400">
+                        <span id="vol-percent-text" class="w-8 text-right font-mono text-[11px]">50%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Rules Form -->
+            <div class="space-y-4 text-sm">
+                <div class="bg-slate-950/60 p-4 rounded-lg border border-slate-800 space-y-3">
+                    <h3 class="font-bold text-cyan-400 text-xs uppercase tracking-wider">⏱️ 各ラウンド制限時間</h3>
+                    
+                    <div class="flex justify-between items-center">
+                        <label for="time-lvl1" class="text-gray-300">Round 1 (英 → 和):</label>
+                        <select id="time-lvl1" class="bg-slate-900 border border-slate-700 text-white rounded px-3 py-1">
+                            <option value="30">30秒</option>
+                            <option value="45" selected>45秒</option>
+                            <option value="60">60秒</option>
+                        </select>
+                    </div>
+
+                    <div class="flex justify-between items-center">
+                        <label for="time-lvl2" class="text-gray-300">Round 2 (和 → 英):</label>
+                        <select id="time-lvl2" class="bg-slate-900 border border-slate-700 text-white rounded px-3 py-1">
+                            <option value="45">45秒</option>
+                            <option value="60" selected>60秒</option>
+                            <option value="90">90秒</option>
+                        </select>
+                    </div>
+
+                    <div class="flex justify-between items-center">
+                        <label for="time-lvl3" class="text-gray-300">Round 3 (言い換え/英語):</label>
+                        <select id="time-lvl3" class="bg-slate-900 border border-slate-700 text-white rounded px-3 py-1">
+                            <option value="60">60秒</option>
+                            <option value="90" selected>90秒</option>
+                            <option value="120">120秒</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950/60 p-4 rounded-lg border border-slate-800 space-y-3">
+                    <h3 class="font-bold text-cyan-400 text-xs uppercase tracking-wider">⚡ ゲーム難易度・対戦ルール</h3>
+
+                    <div class="flex justify-between items-center">
+                        <label for="speed-select" class="text-gray-300">ブロック落下速度:</label>
+                        <select id="speed-select" class="bg-slate-900 border border-slate-700 text-white rounded px-3 py-1">
+                            <option value="2200">ゆっくり (2.2秒)</option>
+                            <option value="1500" selected>標準 (1.5秒)</option>
+                            <option value="1000">速い (1.0秒)</option>
+                        </select>
+                    </div>
+
+                    <div class="flex justify-between items-center">
+                        <label for="garbage-select" class="text-gray-300">おじゃま攻撃条件:</label>
+                        <select id="garbage-select" class="bg-slate-900 border border-slate-700 text-white rounded px-3 py-1">
+                            <option value="2">2連続正解</option>
+                            <option value="3" selected>3連続正解 (標準)</option>
+                            <option value="4">4連続正解</option>
+                        </select>
+                    </div>
+
+                    <div class="flex justify-between items-center">
+                        <label for="penalty-select" class="text-gray-300">盤面あふれ減点:</label>
+                        <select id="penalty-select" class="bg-slate-900 border border-slate-700 text-white rounded px-3 py-1">
+                            <option value="200">-200 pt</option>
+                            <option value="300" selected>-300 pt</option>
+                            <option value="500">-500 pt</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="confirmAdminSettings()" class="w-full mt-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition shadow-lg shadow-amber-500/20 text-base">
+                ルール確定 ➔ Player 1 用QRコード生成
+            </button>
+        </section>
+
+        <!-- 2. CONNECT FLOW VIEW -->
+        <section id="view-qr-step" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl hidden text-center space-y-4">
+            
+            <!-- Step 1: P1 Scan -->
+            <div id="qr-p1-box" class="space-y-4">
+                <span class="inline-block px-3 py-1 bg-cyan-950 text-cyan-400 text-xs rounded-full font-semibold border border-cyan-800">STEP 1 / 2</span>
+                <h2 class="text-lg font-bold text-white">Player 1 (ホスト) 用 QRコード</h2>
+                <p class="text-xs text-gray-400">Player 1 の端末で以下のQRコードを読み取ってください。</p>
+
+                <div class="flex justify-center my-4 p-4 bg-white rounded-lg inline-block mx-auto" id="qrcode-p1"></div>
+                <div class="text-xs text-gray-500 break-all bg-slate-950 p-2 rounded border border-slate-800" id="url-p1-text"></div>
+
+                <div class="pt-2 flex gap-3 justify-center">
+                    <button onclick="simulatePlayerJoin(1)" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-gray-300 rounded border border-slate-700">
+                        💻 この端末で Player 1 として続行
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 2: P2 Scan -->
+            <div id="qr-p2-box" class="space-y-4 hidden">
+                <span class="inline-block px-3 py-1 bg-pink-950 text-pink-400 text-xs rounded-full font-semibold border border-pink-800">STEP 2 / 2</span>
+                <h2 class="text-lg font-bold text-white">Player 2 (対戦相手) 用 QRコード</h2>
+                <p class="text-xs text-gray-400">Player 2 の端末で以下のQRコードを読み取り、対戦接続してください。</p>
+
+                <div class="flex justify-center my-4 p-4 bg-white rounded-lg inline-block mx-auto" id="qrcode-p2"></div>
+                <div class="text-xs text-gray-500 break-all bg-slate-950 p-2 rounded border border-slate-800" id="url-p2-text"></div>
+
+                <div id="p2-waiting-status" class="flex items-center justify-center gap-2 text-sm text-amber-400 animate-pulse pt-2">
+                    <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+                    Player 2 の接続待ち...
+                </div>
+
+                <div class="pt-2">
+                    <button onclick="startSinglePlayerDemo()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-gray-400 rounded border border-slate-700">
+                        🤖 一人練習モードでテスト開始
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. PRE-ROUND RULE PREVIEW (10 SECOND COUNTDOWN) -->
+        <section id="view-preround" class="w-full bg-slate-900 border-2 border-cyan-500/50 rounded-xl p-6 shadow-2xl shadow-cyan-500/10 hidden text-center space-y-5">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <span id="preround-title" class="text-cyan-400 font-bold text-lg">ROUND 1</span>
+                <span class="px-2 py-1 bg-slate-800 text-gray-300 text-xs rounded border border-slate-700">同期確認完了</span>
+            </div>
+
+            <div class="space-y-2">
+                <div id="preround-mode-name" class="text-2xl font-black text-white">英 → 和 モード</div>
+                <div id="preround-instruction" class="text-sm text-gray-300">ターゲットの英語に対応する<b>日本語ブロック</b>をタップしてください。</div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 text-left text-xs bg-slate-950/80 p-4 rounded-lg border border-slate-800">
+                <div><span class="text-gray-500">制限時間:</span> <b id="preround-time" class="text-white">45秒</b></div>
+                <div><span class="text-gray-500">落下速度:</span> <b id="preround-speed" class="text-white">ふつう</b></div>
+                <div><span class="text-gray-500">おじゃま攻撃:</span> <b id="preround-garbage" class="text-white">3連鎖</b></div>
+                <div><span class="text-gray-500">あふれペナルティ:</span> <b id="preround-penalty" class="text-red-400">-300 pt</b></div>
+            </div>
+
+            <div class="py-2">
+                <div class="text-xs text-amber-400 font-semibold mb-1">ゲーム開始まで</div>
+                <div id="preround-countdown" class="text-6xl font-black text-amber-400 tracking-wider">10</div>
+            </div>
+        </section>
+
+        <!-- 4. GAME PLAY SCREEN -->
+        <section id="view-game" class="w-full hidden flex flex-col items-center gap-4">
+            <div class="w-full max-w-sm bg-slate-900 border border-cyan-500/40 rounded-lg p-3 text-center shadow-lg">
+                <div id="target-label" class="text-xs font-bold text-cyan-400 uppercase tracking-widest">ターゲット (英語)</div>
+                <div id="target-word" class="text-2xl font-black text-white mt-1">---</div>
+            </div>
+
+            <div class="w-full max-w-sm flex justify-between items-center text-xs bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 text-gray-300">
+                <span id="score-display">スコア: <b class="text-cyan-400">0</b></span>
+                <span id="streak-display" class="text-amber-400">コンボ: 0連鎖</span>
+                <span id="timer-display" class="font-bold text-white">残り: 45s</span>
+            </div>
+
+            <div class="flex gap-4 justify-center items-start w-full">
+                <!-- Active Player Board -->
+                <div class="flex flex-col items-center gap-1">
+                    <div class="text-xs text-cyan-400 font-bold">あなた</div>
+                    <div id="tetris-matrix" class="tetris-matrix w-[280px] h-[420px]">
+                        <div id="penalty-overlay" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-red-600/90 text-white font-bold px-4 py-2 rounded-lg text-center text-sm shadow-xl z-20">
+                            ⚠️ 盤面あふれ！<br>-300 pt
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Opponent Board Mini -->
+                <div id="opponent-wrapper" class="hidden flex flex-col items-center gap-1">
+                    <div class="text-xs text-pink-400 font-bold">相手</div>
+                    <div id="opponent-score-mini" class="text-[10px] text-gray-400">0 pt</div>
+                    <div id="opponent-matrix" class="tetris-matrix w-[130px] h-[195px] opacity-80 border-pink-500/40"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. RESULTS MODAL -->
+        <section id="modal-results" class="hidden fixed inset-0 bg-slate-950/90 z-50 flex items-center justify-center p-4">
+            <div class="bg-slate-900 border-2 border-cyan-500 rounded-xl p-6 w-full max-w-md text-center space-y-4 shadow-2xl">
+                <h2 id="result-title" class="text-lg font-bold text-cyan-400 border-b border-slate-800 pb-2">ROUND 1 スコア発表</h2>
+
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between items-center bg-slate-950 px-3 py-2 rounded">
+                        <span class="text-gray-400">正解数</span>
+                        <span id="stat-correct" class="font-bold text-white">0 回</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-slate-950 px-3 py-2 rounded">
+                        <span class="text-gray-400">正解基本点</span>
+                        <span id="stat-base" class="font-bold text-cyan-400">0 pt</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-slate-950 px-3 py-2 rounded">
+                        <span class="text-gray-400">最大コンボ</span>
+                        <span id="stat-streak" class="font-bold text-amber-400">0 連鎖</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-slate-950 px-3 py-2 rounded">
+                        <span class="text-gray-400">コンボボーナス</span>
+                        <span id="stat-bonus" class="font-bold text-amber-400">+0 pt</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-slate-950 px-3 py-2 rounded">
+                        <span class="text-gray-400">あふれペナルティ</span>
+                        <span id="stat-penalty" class="font-bold text-red-400">-0 pt</span>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-800">
+                    <div class="text-xs text-gray-400">このラウンドの獲得スコア</div>
+                    <div id="stat-total" class="text-3xl font-black text-cyan-400 mt-1">0 pt</div>
+                </div>
+
+                <div id="match-summary-box" class="hidden pt-3 border-t border-slate-800 space-y-2">
+                    <div class="text-xs font-bold text-amber-400 uppercase tracking-widest">3ラウンド通算対戦結果</div>
+                    <div id="match-winner-text" class="text-xl font-black text-white">優勝: ---</div>
+                    <div id="match-scores-detail" class="text-xs text-gray-300">あなた: 0pt vs 相手: 0pt</div>
+                </div>
+
+                <button id="next-action-btn" onclick="handleNextRoundOrRestart()" class="w-full py-3 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold rounded-lg transition text-sm mt-4">
+                    次のラウンドへ進む ➔
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+    const COLS = 4;
+    const ROWS = 7;
+
+    // Rule Configurations
+    let adminSettings = {
+        timers: { 1: 45, 2: 60, 3: 90 },
+        dropSpeed: 1500,
+        garbageStreakReq: 3,
+        overflowPenalty: 300
+    };
+
+    let playerRole = 'admin';
+    let isMultiplayer = false;
+    let myPeerId = null;
+    let peer = null;
+    let conn = null;
+
+    let currentRound = 1;
+    let currentTarget = null;
+    let activeBlocks = [];
+    let roundScore = 0;
+    let streakCount = 0;
+    let roundTimeLeft = 45;
+
+    let cumulativeScores = { p1: 0, p2: 0 };
+    let roundStats = { correctCount: 0, maxStreak: 0, bonusPoints: 0, penaltyPoints: 0 };
+
+    let dropInterval = null;
+    let gameTimer = null;
+    let preroundInterval = null;
+
+    /* =========================================================
+       AUDIO SOUNDTRACK SYSTEM (audio/soundtrack.mp3)
+       ========================================================= */
+    const bgmAudio = document.getElementById('bgm-audio');
+
+    function toggleBGM() {
+        const btn = document.getElementById('btn-toggle-audio');
+        const status = document.getElementById('audio-status');
+
+        if (bgmAudio.paused) {
+            bgmAudio.play().then(() => {
+                btn.innerHTML = '<span>⏸️</span> 停止';
+                status.innerText = '再生中 (audio/soundtrack.mp3)';
+                status.className = 'text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800';
+            }).catch(err => {
+                console.warn("Audio playback blocked or file missing: audio/soundtrack.mp3", err);
+                status.innerText = '再生エラー (audio/soundtrack.mp3)';
+                status.className = 'text-[10px] px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800';
+            });
+        } else {
+            bgmAudio.pause();
+            btn.innerHTML = '<span>▶️</span> 再生';
+            status.innerText = '一時停止中 (audio/soundtrack.mp3)';
+            status.className = 'text-[10px] px-2 py-0.5 rounded bg-slate-800 text-gray-400 border border-slate-700';
+        }
+    }
+
+    function toggleAudioLoop() {
+        const chk = document.getElementById('chk-audio-loop');
+        bgmAudio.loop = chk.checked;
+    }
+
+    function updateAudioVolume(val) {
+        bgmAudio.volume = parseFloat(val);
+        document.getElementById('vol-percent-text').innerText = `${Math.round(val * 100)}%`;
+    }
+
+    const VOCAB_POOL = [
+        { english: "nevertheless", japanese: "それにもかかわらず", paraphrase: "IN SPITE OF THAT", type: "preposition" },
+        { english: "South Sudan", japanese: "南スーダン", paraphrase: "A COUNTRY IN AFRICA", type: "object" },
+        { english: "unite", japanese: "結びつける", paraphrase: "TO JOIN TOGETHER", type: "verb" },
+        { english: "teammate", japanese: "チームメイト", paraphrase: "FRIEND ON YOUR TEAM", type: "object" },
+        { english: "focus", japanese: "集中する", paraphrase: "LOOK AT ONE THING", type: "verb" },
+        { english: "cohesion", japanese: "団結", paraphrase: "WORKING WELL TOGETHER", type: "object" },
+        { english: "highlight", japanese: "ハイライト", paraphrase: "BEST PART OF SOMETHING", type: "object" },
+        { english: "tackle", japanese: "タックルする", paraphrase: "TRY TO STOP A PLAYER", type: "verb" },
+        { english: "fierce", japanese: "激しい", paraphrase: "STRONG AND POWERFUL", type: "preposition" },
+        { english: "embrace", japanese: "抱きしめる", paraphrase: "TO HUG SOMEONE", type: "verb" },
+        { english: "legend", japanese: "伝説", paraphrase: "FAMOUS STORY FROM PAST", type: "object" },
+        { english: "impression", japanese: "印象", paraphrase: "FEELING ABOUT SOMETHING", type: "object" },
+        { english: "yearn", japanese: "切望する", paraphrase: "WANT VERY MUCH", type: "verb" },
+        { english: "forgive", japanese: "許す", paraphrase: "NOT ANGRY ANYMORE", type: "verb" },
+        { english: "comrade", japanese: "仲間", paraphrase: "GOOD FRIEND / PARTNER", type: "object" },
+        { english: "permanent", japanese: "永久の", paraphrase: "LASTING FOREVER", type: "preposition" },
+        { english: "revitalize", japanese: "復興させる", paraphrase: "MAKE NEW AND STRONG", type: "verb" }
+    ];
+
+    function showView(viewId) {
+        ['view-admin', 'view-qr-step', 'view-preround', 'view-game'].forEach(id => {
+            document.getElementById(id).classList.add('hidden');
+        });
+        document.getElementById(viewId).classList.remove('hidden');
+    }
+
+    function updateRoleBadge(text, colorClass) {
+        const badge = document.getElementById('role-badge');
+        badge.innerText = text;
+        badge.className = `px-3 py-1 rounded-full text-xs font-semibold border ${colorClass}`;
+    }
+
+    function confirmAdminSettings() {
+        adminSettings.timers[1] = parseInt(document.getElementById('time-lvl1').value, 10);
+        adminSettings.timers[2] = parseInt(document.getElementById('time-lvl2').value, 10);
+        adminSettings.timers[3] = parseInt(document.getElementById('time-lvl3').value, 10);
+
+        adminSettings.dropSpeed = parseInt(document.getElementById('speed-select').value, 10);
+        adminSettings.garbageStreakReq = parseInt(document.getElementById('garbage-select').value, 10);
+        adminSettings.overflowPenalty = parseInt(document.getElementById('penalty-select').value, 10);
+
+        showView('view-qr-step');
+        generateP1QRCode();
+    }
+
+    function generateP1QRCode() {
+        document.getElementById('qr-p1-box').classList.remove('hidden');
+        document.getElementById('qr-p2-box').classList.add('hidden');
+
+        const baseUrl = window.location.href.split('?')[0].split('#')[0];
+        const p1Url = `${baseUrl}?role=p1&config=${encodeURIComponent(JSON.stringify(adminSettings))}`;
+
+        document.getElementById("qrcode-p1").innerHTML = "";
+        new QRCode(document.getElementById("qrcode-p1"), { text: p1Url, width: 180, height: 180 });
+        document.getElementById('url-p1-text').innerText = p1Url;
+    }
+
+    function simulatePlayerJoin(roleNum) {
+        if (roleNum === 1) {
+            playerRole = 'p1';
+            updateRoleBadge("Player 1 (ホスト)", "bg-cyan-950 text-cyan-400 border-cyan-800");
+            initP2PPeer();
+        }
+    }
+
+    function initP2PPeer() {
+        peer = new Peer();
+        peer.on('open', (id) => {
+            myPeerId = id;
+            if (playerRole === 'p1') showP2QRCode(id);
+        });
+
+        peer.on('connection', (connection) => {
+            conn = connection;
+            setupPeerListeners();
+        });
+    }
+
+    function showP2QRCode(p1Id) {
+        document.getElementById('qr-p1-box').classList.add('hidden');
+        document.getElementById('qr-p2-box').classList.remove('hidden');
+
+        const baseUrl = window.location.href.split('?')[0].split('#')[0];
+        const p2Url = `${baseUrl}?role=p2&host=${p1Id}&config=${encodeURIComponent(JSON.stringify(adminSettings))}`;
+
+        document.getElementById("qrcode-p2").innerHTML = "";
+        new QRCode(document.getElementById("qrcode-p2"), { text: p2Url, width: 180, height: 180 });
+        document.getElementById('url-p2-text').innerText = p2Url;
+    }
+
+    function connectToP1Host(hostId) {
+        playerRole = 'p2';
+        updateRoleBadge("Player 2 (ゲスト)", "bg-pink-950 text-pink-400 border-pink-800");
+        peer = new Peer();
+
+        peer.on('open', () => {
+            conn = peer.connect(hostId);
+            setupPeerListeners();
+        });
+    }
+
+    function setupPeerListeners() {
+        conn.on('open', () => {
+            isMultiplayer = true;
+            document.getElementById('opponent-wrapper').classList.remove('hidden');
+
+            if (playerRole === 'p1') {
+                sendPeerData({ type: 'START_PREROUND', round: 1, config: adminSettings });
+                triggerPreRoundSequence(1);
+            }
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'START_PREROUND') {
+                if (data.config) adminSettings = data.config;
+                triggerPreRoundSequence(data.round);
+            } else if (data.type === 'SYNC_BOARD') {
+                renderOpponentBoard(data.blocks, data.score);
+            } else if (data.type === 'GARBAGE') {
+                receiveGarbageBlocks(data.count);
+            } else if (data.type === 'ROUND_SCORE') {
+                cumulativeScores.p2 = data.totalScore;
+            }
+        });
+    }
+
+    function sendPeerData(data) {
+        if (isMultiplayer && conn && conn.open) conn.send(data);
+    }
+
+    function startSinglePlayerDemo() {
+        isMultiplayer = false;
+        playerRole = 'p1';
+        updateRoleBadge("1人テストモード", "bg-gray-800 text-gray-300 border-gray-700");
+        triggerPreRoundSequence(1);
+    }
+
+    function triggerPreRoundSequence(roundNum) {
+        currentRound = roundNum;
+        showView('view-preround');
+
+        document.getElementById('preround-title').innerText = `ROUND ${currentRound} / 3`;
+
+        const modeNames = { 1: "英 → 和 モード", 2: "和 → 英 モード", 3: "言い換え (Paraphrase) モード" };
+        const instructions = {
+            1: "ターゲットの英語に対応する<b>日本語ブロック</b>をタップ！",
+            2: "ターゲットの日本語に対応する<b>英単語ブロック</b>をタップ！",
+            3: "英文の意味・説明に対応する<b>英単語ブロック</b>をタップ！"
+        };
+        const speeds = { 2200: "ゆっくり", 1500: "ふつう", 1000: "速い" };
+
+        document.getElementById('preround-mode-name').innerText = modeNames[currentRound];
+        document.getElementById('preround-instruction').innerHTML = instructions[currentRound];
+
+        document.getElementById('preround-time').innerText = `${adminSettings.timers[currentRound]} 秒`;
+        document.getElementById('preround-speed').innerText = speeds[adminSettings.dropSpeed] || "カスタム";
+        document.getElementById('preround-garbage').innerText = `${adminSettings.garbageStreakReq} 連続正解`;
+        document.getElementById('preround-penalty').innerText = `-${adminSettings.overflowPenalty} pt`;
+
+        let countdown = 10;
+        document.getElementById('preround-countdown').innerText = countdown;
+
+        clearInterval(preroundInterval);
+        preroundInterval = setInterval(() => {
+            countdown--;
+            document.getElementById('preround-countdown').innerText = countdown;
+
+            if (countdown <= 0) {
+                clearInterval(preroundInterval);
+                startActualRound();
+            }
+        }, 1000);
+    }
+
+    function startActualRound() {
+        showView('view-game');
+
+        roundScore = 0;
+        streakCount = 0;
+        activeBlocks = [];
+        roundStats = { correctCount: 0, maxStreak: 0, bonusPoints: 0, penaltyPoints: 0 };
+
+        setNextTarget();
+        renderGame();
+
+        clearInterval(dropInterval);
+        clearInterval(gameTimer);
+
+        dropInterval = setInterval(gameLoop, adminSettings.dropSpeed);
+
+        roundTimeLeft = adminSettings.timers[currentRound];
+        document.getElementById('timer-display').innerText = `残り: ${roundTimeLeft}s`;
+
+        gameTimer = setInterval(() => {
+            roundTimeLeft--;
+            document.getElementById('timer-display').innerText = `残り: ${roundTimeLeft}s`;
+
+            if (roundTimeLeft <= 0) endRound();
+        }, 1000);
+    }
+
+    function setNextTarget() {
+        currentTarget = VOCAB_POOL[Math.floor(Math.random() * VOCAB_POOL.length)];
+        const label = document.getElementById('target-label');
+        const word = document.getElementById('target-word');
+
+        if (currentRound === 1) {
+            label.innerText = "ターゲット (英語):";
+            word.innerText = currentTarget.english;
+        } else if (currentRound === 2) {
+            label.innerText = "ターゲット (日本語):";
+            word.innerText = currentTarget.japanese;
+        } else if (currentRound === 3) {
+            label.innerText = "言い換え/意味 (英語):";
+            word.innerText = currentTarget.paraphrase;
+        }
+    }
+
+    function gameLoop() {
+        applyGravity();
+        spawnBlock();
+        renderGame();
+    }
+
+    function spawnBlock() {
+        let selected = (Math.random() < 0.45) 
+            ? currentTarget 
+            : VOCAB_POOL[Math.floor(Math.random() * VOCAB_POOL.length)];
+
+        let blockText = (currentRound === 1) ? selected.japanese : selected.english;
+
+        let emptyCols = [];
+        for (let c = 0; c < COLS; c++) {
+            if (!activeBlocks.some(b => b.col === c && b.row === 0)) emptyCols.push(c);
+        }
+
+        if (emptyCols.length === 0) {
+            handleOverflow();
+            return;
+        }
+
+        let randomCol = emptyCols[Math.floor(Math.random() * emptyCols.length)];
+        activeBlocks.push({
+            text: blockText,
+            type: selected.type,
+            col: randomCol,
+            row: 0,
+            isGarbage: false,
+            id: Date.now() + Math.random()
+        });
+    }
+
+    function applyGravity() {
+        for (let r = ROWS - 2; r >= 0; r--) {
+            activeBlocks.forEach(b => {
+                if (b.row === r) {
+                    let hasBlockBelow = activeBlocks.some(below => below.col === b.col && below.row === r + 1);
+                    if (!hasBlockBelow) b.row++;
+                }
+            });
+        }
+    }
+
+    function handleBlockTap(clickedBlock) {
+        if (clickedBlock.isGarbage) return;
+
+        let index = activeBlocks.findIndex(b => b.id === clickedBlock.id);
+        if (index === -1) return;
+
+        let isCorrect = (currentRound === 1 && clickedBlock.text === currentTarget.japanese) ||
+                        (currentRound >= 2 && clickedBlock.text === currentTarget.english);
+
+        if (isCorrect) {
+            streakCount++;
+            roundStats.correctCount++;
+            if (streakCount > roundStats.maxStreak) roundStats.maxStreak = streakCount;
+
+            let bonus = (Math.min(streakCount, 5) - 1) * 20;
+            roundStats.bonusPoints += bonus;
+
+            roundScore += (100 + bonus);
+            activeBlocks.splice(index, 1);
+
+            if (streakCount >= adminSettings.garbageStreakReq && isMultiplayer) {
+                sendPeerData({ type: 'GARBAGE', count: 1 });
+            }
+
+            setNextTarget();
+        } else {
+            streakCount = 0;
+            roundScore = Math.max(0, roundScore - 30);
+        }
+
+        applyGravity();
+        renderGame();
+    }
+
+    function handleOverflow() {
+        activeBlocks = [];
+        streakCount = 0;
+        roundStats.penaltyPoints += adminSettings.overflowPenalty;
+        roundScore = Math.max(0, roundScore - adminSettings.overflowPenalty);
+
+        const matrix = document.getElementById('tetris-matrix');
+        const overlay = document.getElementById('penalty-overlay');
+
+        matrix.classList.add('shake');
+        overlay.classList.remove('hidden');
+
+        setTimeout(() => {
+            matrix.classList.remove('shake');
+            overlay.classList.add('hidden');
+        }, 1000);
+
+        renderGame();
+    }
+
+    function receiveGarbageBlocks(count) {
+        for (let i = 0; i < count; i++) {
+            let emptyCols = [];
+            for (let c = 0; c < COLS; c++) {
+                if (!activeBlocks.some(b => b.col === c && b.row === 0)) emptyCols.push(c);
+            }
+
+            if (emptyCols.length === 0) {
+                handleOverflow();
+                return;
+            }
+
+            let randomCol = emptyCols[Math.floor(Math.random() * emptyCols.length)];
+            activeBlocks.push({
+                text: "おじゃま",
+                type: "garbage",
+                col: randomCol,
+                row: 0,
+                isGarbage: true,
+                id: Date.now() + Math.random()
+            });
+        }
+        applyGravity();
+        renderGame();
+    }
+
+    function endRound() {
+        clearInterval(dropInterval);
+        clearInterval(gameTimer);
+
+        if (playerRole === 'p1') cumulativeScores.p1 += roundScore;
+        else cumulativeScores.p2 += roundScore;
+
+        sendPeerData({
+            type: 'ROUND_SCORE',
+            roundScore: roundScore,
+            totalScore: (playerRole === 'p1' ? cumulativeScores.p1 : cumulativeScores.p2)
+        });
+
+        displayResultsModal();
+    }
+
+    function displayResultsModal() {
+        const modal = document.getElementById('modal-results');
+        modal.classList.remove('hidden');
+
+        document.getElementById('result-title').innerText = `ROUND ${currentRound} スコア結果`;
+
+        const basePoints = roundStats.correctCount * 100;
+        const bonusPts = roundStats.bonusPoints;
+        const penaltyPts = roundStats.penaltyPoints;
+
+        document.getElementById('stat-correct').innerText = `${roundStats.correctCount} 回`;
+        document.getElementById('stat-streak').innerText = `${roundStats.maxStreak} 連鎖`;
+
+        animateValue('stat-base', 0, basePoints, 600, "", () => {
+            animateValue('stat-bonus', 0, bonusPts, 600, "+", () => {
+                animateValue('stat-penalty', 0, penaltyPts, 600, "-", () => {
+                    animateValue('stat-total', 0, roundScore, 800, "");
+                });
+            });
+        });
+
+        const nextBtn = document.getElementById('next-action-btn');
+        const summaryBox = document.getElementById('match-summary-box');
+
+        if (currentRound < 3) {
+            summaryBox.classList.add('hidden');
+            nextBtn.innerText = `第 ${currentRound + 1} ラウンドへ進む ➔`;
+        } else {
+            summaryBox.classList.remove('hidden');
+            nextBtn.innerText = "大会セットアップに戻る 🔄";
+
+            let p1Total = cumulativeScores.p1;
+            let p2Total = cumulativeScores.p2;
+            let winnerText = "";
+
+            if (!isMultiplayer) {
+                winnerText = `獲得スコア: ${roundScore} pt`;
+            } else if (p1Total > p2Total) {
+                winnerText = "優勝: Player 1 (ホスト) 🏆";
+            } else if (p2Total > p1Total) {
+                winnerText = "優勝: Player 2 (対戦相手) 🏆";
+            } else {
+                winnerText = "引き分け (DRAW) 🤝";
+            }
+
+            document.getElementById('match-winner-text').innerText = winnerText;
+            document.getElementById('match-scores-detail').innerText = `P1: ${p1Total} pt vs P2: ${p2Total} pt`;
+        }
+    }
+
+    function animateValue(id, start, end, duration, prefix = "", callback = null) {
+        let obj = document.getElementById(id);
+        if (end === 0) {
+            obj.innerText = `${prefix}0 pt`;
+            if (callback) callback();
+            return;
+        }
+
+        let startTimestamp = null;
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+            const val = Math.floor(progress * (end - start) + start);
+            obj.innerText = `${prefix}${val} pt`;
+
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            } else if (callback) {
+                callback();
+            }
+        };
+        window.requestAnimationFrame(step);
+    }
+
+    function handleNextRoundOrRestart() {
+        document.getElementById('modal-results').classList.add('hidden');
+
+        if (currentRound < 3) {
+            let nextR = currentRound + 1;
+            if (playerRole === 'p1') {
+                sendPeerData({ type: 'START_PREROUND', round: nextR });
+            }
+            triggerPreRoundSequence(nextR);
+        } else {
+            currentRound = 1;
+            cumulativeScores = { p1: 0, p2: 0 };
+            showView('view-admin');
+        }
+    }
+
+    function renderGame() {
+        const matrix = document.getElementById('tetris-matrix');
+        matrix.querySelectorAll('.word-block').forEach(b => b.remove());
+
+        let cellW = matrix.clientWidth / COLS;
+        let cellH = matrix.clientHeight / ROWS;
+
+        activeBlocks.forEach(b => {
+            const el = document.createElement('div');
+            el.className = `word-block ${b.isGarbage ? 'garbage' : 'type-' + b.type}`;
+            el.innerText = b.text;
+            el.style.left = (b.col * cellW) + 2 + 'px';
+            el.style.top = (b.row * cellH) + 2 + 'px';
+            el.style.width = (cellW - 4) + 'px';
+            el.style.height = (cellH - 4) + 'px';
+
+            el.addEventListener('click', () => handleBlockTap(b));
+            matrix.appendChild(el);
+        });
+
+        document.getElementById('score-display').innerHTML = `スコア: <b class="text-cyan-400">${roundScore}</b>`;
+        document.getElementById('streak-display').innerText = `コンボ: ${streakCount}連鎖`;
+
+        sendPeerData({
+            type: 'SYNC_BOARD',
+            score: roundScore,
+            blocks: activeBlocks.map(b => ({ col: b.col, row: b.row, isGarbage: b.isGarbage, type: b.type }))
+        });
+    }
+
+    function renderOpponentBoard(oppBlocks, oppScore) {
+        const matrix = document.getElementById('opponent-matrix');
+        matrix.querySelectorAll('.word-block').forEach(b => b.remove());
+        document.getElementById('opponent-score-mini').innerText = `${oppScore} pt`;
+
+        let cellW = matrix.clientWidth / COLS;
+        let cellH = matrix.clientHeight / ROWS;
+
+        (oppBlocks || []).forEach(b => {
+            const el = document.createElement('div');
+            el.className = `word-block ${b.isGarbage ? 'garbage' : 'type-' + b.type}`;
+            el.style.left = (b.col * cellW) + 1 + 'px';
+            el.style.top = (b.row * cellH) + 1 + 'px';
+            el.style.width = (cellW - 2) + 'px';
+            el.style.height = (cellH - 2) + 'px';
+            matrix.appendChild(el);
+        });
+    }
+
+    window.addEventListener('load', () => {
+        const params = new URLSearchParams(window.location.search);
+        const role = params.get('role');
+        const host = params.get('host');
+        const configStr = params.get('config');
+
+        if (configStr) {
+            try { adminSettings = JSON.parse(decodeURIComponent(configStr)); } catch(e){}
+        }
+
+        if (role === 'p1') {
+            playerRole = 'p1';
+            updateRoleBadge("Player 1 (ホスト)", "bg-cyan-950 text-cyan-400 border-cyan-800");
+            showView('view-qr-step');
+            initP2PPeer();
+        } else if (role === 'p2' && host) {
+            playerRole = 'p2';
+            updateRoleBadge("Player 2 (対戦相手)", "bg-pink-950 text-pink-400 border-pink-800");
+            showView('view-qr-step');
+            document.getElementById('qr-p1-box').classList.add('hidden');
+            document.getElementById('qr-p2-box').classList.remove('hidden');
+            document.getElementById('p2-waiting-status').innerText = "ホストと接続中...";
+            connectToP1Host(host);
+        } else {
+            showView('view-admin');
+        }
+    });
+    </script>
+</body>
+</html>
