@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>単語ドロップ対戦 (Vocab Word Drop)</title>
+    <!-- PeerJS for P2P networking -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- QRCode.js for generating QR codes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Html5-Qrcode for built-in camera scanning -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background-color: #0d0e15;
+            color: #ffffff;
+            font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 15px;
+        }
+
+        h1 { margin: 0 0 10px 0; font-size: 24px; color: #00ffff; text-shadow: 0 0 8px rgba(0,255,255,0.5); text-align: center; }
+
+        /* Full-screen View Control */
+        .screen-view {
+            display: none;
+            width: 100%;
+            max-width: 680px;
+            flex-direction: column;
+            align-items: center;
+        }
+        .screen-view.active { display: flex; }
+
+        /* Card Panels */
+        .card {
+            background: #181a24;
+            border: 2px solid #3d415a;
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 18px;
+            color: #00ffff;
+            border-bottom: 1px solid #3d415a;
+            padding-bottom: 8px;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            margin: 10px 0;
+            text-align: left;
+        }
+
+        input, select {
+            background: #0d0e15;
+            border: 1px solid #3d415a;
+            color: #fff;
+            padding: 8px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        button {
+            padding: 10px 18px;
+            background-color: #00ffff;
+            color: #000;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        button:hover { background-color: #00cccc; box-shadow: 0 0 10px rgba(0,255,255,0.4); }
+
+        .btn-secondary {
+            background-color: #3d415a;
+            color: #fff;
+        }
+        .btn-secondary:hover { background-color: #53587a; }
+
+        /* QR Container */
+        .qr-container {
+            background: #ffffff;
+            padding: 12px;
+            border-radius: 8px;
+            display: inline-block;
+            margin: 12px 0;
+        }
+
+        .room-code-badge {
+            font-size: 28px;
+            font-weight: bold;
+            color: #f39c12;
+            letter-spacing: 4px;
+            background: #0d0e15;
+            border: 1px dashed #f39c12;
+            padding: 6px 16px;
+            border-radius: 8px;
+            display: inline-block;
+            margin: 10px 0;
+        }
+
+        /* Camera Reader Box */
+        #reader {
+            width: 100%;
+            max-width: 320px;
+            margin: 10px auto;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #00ffff;
+        }
+
+        /* Audio Card */
+        .audio-card {
+            background: #12131c;
+            border: 1px solid #f39c12;
+            border-radius: 8px;
+            padding: 12px;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        /* Game Layout */
+        #game-layout {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .player-board-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }
+
+        #target-card {
+            background: #181a24;
+            border: 2px solid #00ffff;
+            border-radius: 8px;
+            padding: 8px 12px;
+            text-align: center;
+            width: 300px;
+            min-height: 65px;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        #target-label { font-size: 11px; color: #00ffff; font-weight: bold; letter-spacing: 1px; }
+        #target-word { font-size: 18px; font-weight: bold; color: #fff; margin-top: 4px; }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-between;
+            width: 300px;
+            font-size: 12px;
+            color: #aaa;
+            background: #181a24;
+            padding: 6px 10px;
+            border-radius: 4px;
+        }
+
+        .tetris-matrix {
+            position: relative;
+            width: 300px;
+            height: 450px;
+            background-color: #12131c;
+            border: 2px solid #2a2d3d;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .tetris-matrix.opponent {
+            width: 180px;
+            height: 270px;
+            opacity: 0.85;
+            border-color: #ff0055;
+        }
+
+        /* 10s Rule Overlay */
+        #rule-preview-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(13, 14, 21, 0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #preview-round-title { color: #00ffff; font-size: 20px; font-weight: bold; margin-bottom: 10px; }
+        #preview-rule-text { color: #ffffff; font-size: 15px; margin-bottom: 20px; line-height: 1.6; }
+        #preview-countdown { color: #f39c12; font-size: 48px; font-weight: bold; text-shadow: 0 0 12px rgba(243,156,18,0.7); }
+
+        /* Block Styles */
+        .word-block {
+            position: absolute;
+            background-color: #3498db;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.3), 0 2px 4px rgba(0,0,0,0.5);
+            padding: 2px;
+            word-break: break-word;
+            line-height: 1.1;
+        }
+
+        .word-block.garbage {
+            background-color: #555566 !important;
+            color: #888899 !important;
+            border: 1px solid #777788;
+            cursor: not-allowed;
+        }
+
+        .type-object { background-color: #2ecc71; }
+        .type-verb { background-color: #e74c3c; }
+        .type-preposition { background-color: #f39c12; }
+
+        /* Results Modal */
+        #results-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(13, 14, 21, 0.95);
+            z-index: 1000;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .results-card {
+            background: #181a24;
+            border: 2px solid #00ffff;
+            border-radius: 12px;
+            padding: 24px;
+            width: 360px;
+            text-align: center;
+            box-shadow: 0 0 25px rgba(0,255,255,0.2);
+        }
+
+        .stat-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            margin: 10px 0;
+            padding: 6px 10px;
+            background: #0d0e15;
+            border-radius: 6px;
+        }
+
+        .stat-value { font-weight: bold; color: #00ffff; font-size: 16px; }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+    </style>
+</head>
+<body>
+
+<h1>単語ドロップ対戦 ⚔️</h1>
+
+<!-- 1. ADMIN SCREEN -->
+<div id="admin-screen" class="screen-view active">
+    <div class="card">
+        <h2>⚙️ ルール設定 (管理者画面)</h2>
+        
+        <div style="font-weight: bold; color: #00ffff; margin-top: 10px; font-size: 13px; text-align: left;">⏱️ ラウンド別 制限時間</div>
+        <div class="setting-row">
+            <label>Round 1 (英 → 和):</label>
+            <select id="time-r1">
+                <option value="30">30秒</option>
+                <option value="45" selected>45秒</option>
+                <option value="60">60秒</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <label>Round 2 (和 → 英):</label>
+            <select id="time-r2">
+                <option value="45">45秒</option>
+                <option value="60" selected>60秒</option>
+                <option value="90">90秒</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <label>Round 3 (言い換え):</label>
+            <select id="time-r3">
+                <option value="60">60秒</option>
+                <option value="90" selected>90秒</option>
+                <option value="120">120秒</option>
+            </select>
+        </div>
+
+        <div style="font-weight: bold; color: #00ffff; margin-top: 15px; font-size: 13px; text-align: left;">⚡ ラウンド別 落下速度</div>
+        <div class="setting-row">
+            <label>Round 1 速度:</label>
+            <select id="speed-r1">
+                <option value="2500">ゆっくり (2.5秒)</option>
+                <option value="1500" selected>ふつう (1.5秒)</option>
+                <option value="1000">速い (1.0秒)</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <label>Round 2 速度:</label>
+            <select id="speed-r2">
+                <option value="2500">ゆっくり (2.5秒)</option>
+                <option value="1500" selected>ふつう (1.5秒)</option>
+                <option value="1000">速い (1.0秒)</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <label>Round 3 速度:</label>
+            <select id="speed-r3">
+                <option value="2500" selected>ゆっくり (2.5秒)</option>
+                <option value="1500">ふつう (1.5秒)</option>
+                <option value="1000">速い (1.0秒)</option>
+            </select>
+        </div>
+
+        <div style="font-weight: bold; color: #00ffff; margin-top: 15px; font-size: 13px; text-align: left;">⚔️ 対戦ペナルティ設定</div>
+        <div class="setting-row">
+            <label>おじゃま攻撃必要コンボ:</label>
+            <select id="garbage-req">
+                <option value="2">2連鎖</option>
+                <option value="3" selected>3連鎖</option>
+            </select>
+        </div>
+
+        <div class="audio-card">
+            <div style="font-size: 12px; color: #f39c12; font-weight: bold; margin-bottom: 6px; text-align: left;">🎵 BGM Soundtrack</div>
+            <audio id="bgm-player" src="audio/soundtrack.mp3" loop style="width: 100%; height: 32px;"></audio>
+        </div>
+
+        <button onclick="adminApplySettings()" style="width: 100%; margin-top: 15px; background: #00ffff; color: #000; font-size: 15px;">設定適用 ＆ Player 1 QRコード表示 ➔</button>
+
+        <div id="admin-p1-area" style="display: none; margin-top: 15px; border-top: 1px dashed #3d415a; padding-top: 15px;">
+            <p style="font-size: 14px; color: #00ffff; margin: 0; font-weight: bold;">📱 Player 1: QRコードをスキャン または PINコード入力</p>
+            <div class="qr-container"><div id="admin-p1-qrcode"></div></div>
+            <div>ROOM PIN: <span id="admin-pin-display" class="room-code-badge">----</span></div>
+        </div>
+    </div>
+</div>
+
+<!-- 2. SCAN / INPUT SCREEN (For Player 1 & Player 2) -->
+<div id="scanner-screen" class="screen-view">
+    <div class="card">
+        <h2 id="scanner-title">📷 QRコード読み取り</h2>
+        
+        <p style="font-size: 13px; color: #aaa; margin: 5px 0;" id="scanner-instruction">画面に表示されたQRコードをカメラにかざしてください。</p>
+        
+        <div id="reader"></div>
+
+        <div style="margin: 15px 0; border-top: 1px dashed #3d415a; padding-top: 15px;">
+            <p style="font-size: 13px; color: #aaa; margin-bottom: 8px;">または 4桁の ROOM PIN を直接入力:</p>
+            <div style="display: flex; gap: 8px; justify-content: center;">
+                <input type="text" id="manual-pin-input" maxlength="6" placeholder="PINコード" style="width: 130px; letter-spacing: 2px;">
+                <button onclick="submitManualPin()">接続</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 3. PLAYER 1 LOBBY SCREEN (Displays P2 Pairing QR) -->
+<div id="p1-lobby-screen" class="screen-view">
+    <div class="card">
+        <h2>📱 Player 2 接続待ち (Player 1 タブレット)</h2>
+        <p style="font-size: 14px; color: #aaa;">Player 2 は Player 1 画面の QR コードを読み取るか、PIN を入力してください。</p>
+        
+        <div class="qr-container">
+            <div id="p2-pairing-qrcode"></div>
+        </div>
+
+        <div>ROOM PIN: <span id="p1-pin-display" class="room-code-badge">----</span></div>
+        <p id="pairing-status" style="font-weight: bold; color: #f39c12; animation: pulse 1.5s infinite; margin-top: 10px;">Player 2 の接続を待っています...</p>
+    </div>
+</div>
+
+<!-- 4. MAIN GAMEPLAY SCREEN -->
+<div id="game-screen" class="screen-view">
+    <div id="game-layout">
+        <div class="player-board-container">
+            <div id="target-card">
+                <span id="target-label">ターゲット (英語):</span>
+                <div id="target-word">---</div>
+            </div>
+
+            <div class="stats-bar">
+                <span id="score-display">スコア: 0 (🔥 x1.00)</span>
+                <span id="timer-display">残り時間: 45秒</span>
+            </div>
+
+            <div id="tetris-matrix" class="tetris-matrix">
+                <div id="rule-preview-overlay">
+                    <div id="preview-round-title">ROUND 1: 英 → 和</div>
+                    <div id="preview-rule-text">
+                        ターゲットの英語に合う<br><b>日本語ブロック</b>をタップ！<br><br>
+                        制限時間: <span id="rule-time-val">45</span>秒<br>
+                        スピード: <span id="rule-speed-val">ふつう</span>
+                    </div>
+                    <div id="preview-countdown">10</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="player-board-container" id="opponent-container">
+            <div style="font-size: 12px; color: #ff0055; font-weight: bold; margin-bottom: 4px;">対戦相手の盤面</div>
+            <div class="stats-bar" style="width: 180px;">
+                <span id="opp-score-display">スコア: 0</span>
+                <span id="opp-blocks-display">ブロック: 0</span>
+            </div>
+            <div id="opponent-matrix" class="tetris-matrix opponent"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Results Modal -->
+<div id="results-modal">
+    <div class="results-card">
+        <h2 id="result-title" style="color: #00ffff; margin-top: 0; border-bottom: 1px solid #3d415a; padding-bottom: 8px;">ラウンド 1 結果</h2>
+        
+        <div class="stat-line"><span>🎯 正解数</span><span id="stat-correct" class="stat-value">0 回</span></div>
+        <div class="stat-line"><span>正解基本点</span><span id="stat-base" class="stat-value">0 pt</span></div>
+        <div class="stat-line"><span>🔥 最大コンボ</span><span id="stat-streak" class="stat-value">0 連鎖</span></div>
+        <div class="stat-line"><span>✨ コンボボーナス</span><span id="stat-bonus" class="stat-value" style="color: #f39c12;">+0 pt</span></div>
+
+        <hr style="border-color: #2a2d3d; margin: 15px 0;">
+
+        <div style="font-size: 18px; font-weight: bold; color: #ffffff;">
+            獲得スコア: <span id="stat-total" style="color: #00ffff; font-size: 26px; text-shadow: 0 0 10px rgba(0,255,255,0.6);">0</span> pt
+        </div>
+
+        <button id="next-round-btn" onclick="proceedToNextRound()" style="width: 100%; margin-top: 20px; padding: 10px; background: #00ffff; color: #000; font-weight: bold; font-size: 15px;">次のラウンドへ進む ➔</button>
+    </div>
+</div>
+
+<script>
+const COLS = 4;
+const ROWS = 8;
+
+let adminSettings = {
+    timers: { 1: 45, 2: 60, 3: 90 },
+    dropSpeeds: { 1: 1500, 2: 1500, 3: 2500 },
+    garbageReq: 3
+};
+
+let currentRound = 1;
+let currentTarget = null;
+let activeBlocks = [];
+let currentScore = 0;
+let streakCount = 0;
+let timeLeft = 45;
+let gameTimer = null;
+let dropInterval = null;
+let previewCountdownInterval = null;
+let isGameOver = false;
+let isPreviewActive = false;
+
+let totalScores = { p1: 0, p2: 0 };
+let isPlayer1 = false;
+let roundStats = { correctCount: 0, maxStreak: 0, bonusPoints: 0 };
+
+let peer = null;
+let conn = null;
+let html5QrcodeScanner = null;
+let roomPinCode = "";
+
+const VOCAB_POOL = [
+    { english: "nevertheless", japanese: "それにもかかわらず", paraphrase: "IN SPITE OF THAT / STILL", type: "preposition" },
+    { english: "South Sudan", japanese: "南スーダン", paraphrase: "A COUNTRY IN AFRICA", type: "object" },
+    { english: "unite", japanese: "結びつける", paraphrase: "TO JOIN TOGETHER", type: "verb" },
+    { english: "teammate", japanese: "チームメイト", paraphrase: "A FRIEND ON YOUR TEAM", type: "object" },
+    { english: "focus", japanese: "集中する", paraphrase: "LOOK AT ONE THING", type: "verb" },
+    { english: "cohesion", japanese: "団結", paraphrase: "WORKING WELL TOGETHER", type: "object" },
+    { english: "highlight", japanese: "ハイライト", paraphrase: "BEST PART OF SOMETHING", type: "object" },
+    { english: "tackle", japanese: "タックルする", paraphrase: "TRY TO STOP A PLAYER", type: "verb" },
+    { english: "fierce", japanese: "激しい", paraphrase: "STRONG AND POWERFUL", type: "preposition" }
+];
+
+function showScreen(screenId) {
+    document.querySelectorAll('.screen-view').forEach(s => s.classList.remove('active'));
+    document.getElementById(screenId).classList.add('active');
+}
+
+// Compact string encoding for ultrashort QR data payloads
+function encodeCompactConfig(cfg) {
+    return [
+        cfg.timers[1], cfg.timers[2], cfg.timers[3],
+        cfg.dropSpeeds[1], cfg.dropSpeeds[2], cfg.dropSpeeds[3],
+        cfg.garbageReq
+    ].join(',');
+}
+
+function decodeCompactConfig(str) {
+    if (!str) return adminSettings;
+    const p = str.split(',').map(Number);
+    if (p.length < 7) return adminSettings;
+    return {
+        timers: { 1: p[0], 2: p[1], 3: p[2] },
+        dropSpeeds: { 1: p[3], 2: p[4], 3: p[5] },
+        garbageReq: p[6]
+    };
+}
+
+// Admin Setup -> Generates P1 QR Code & PIN
+function adminApplySettings() {
+    adminSettings.timers[1] = parseInt(document.getElementById('time-r1').value, 10);
+    adminSettings.timers[2] = parseInt(document.getElementById('time-r2').value, 10);
+    adminSettings.timers[3] = parseInt(document.getElementById('time-r3').value, 10);
+
+    adminSettings.dropSpeeds[1] = parseInt(document.getElementById('speed-r1').value, 10);
+    adminSettings.dropSpeeds[2] = parseInt(document.getElementById('speed-r2').value, 10);
+    adminSettings.dropSpeeds[3] = parseInt(document.getElementById('speed-r3').value, 10);
+
+    adminSettings.garbageReq = parseInt(document.getElementById('garbage-req').value, 10);
+
+    const audio = document.getElementById('bgm-player');
+    if (audio) { audio.play().catch(e => console.log("Audio autoplay prevented")); }
+
+    roomPinCode = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // Payload format: "VDP1:[PIN]:[CFG]"
+    const payload = `VDP1:${roomPinCode}:${encodeCompactConfig(adminSettings)}`;
+
+    const qrContainer = document.getElementById('admin-p1-qrcode');
+    qrContainer.innerHTML = '';
+    new QRCode(qrContainer, { text: payload, width: 180, height: 180 });
+
+    document.getElementById('admin-pin-display').innerText = roomPinCode;
+    document.getElementById('admin-p1-area').style.display = 'block';
+}
+
+function startScanner(onScannedCallback) {
+    showScreen('scanner-screen');
+    if (html5QrcodeScanner) {
+        html5QrcodeScanner.clear().catch(e => {});
+    }
+
+    html5QrcodeScanner = new Html5Qrcode("reader");
+    html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 220, height: 220 } },
+        (decodedText) => {
+            html5QrcodeScanner.stop().then(() => {
+                onScannedCallback(decodedText);
+            }).catch(() => onScannedCallback(decodedText));
+        },
+        (error) => {}
+    ).catch(err => {
+        console.warn("Camera start failed, fallback to manual PIN input:", err);
+    });
+}
+
+function stopScanner() {
+    if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().catch(e => {});
+    }
+}
+
+// Process Scanned Data or Manual Input
+function processScannedPayload(payload) {
+    if (!payload) return;
+
+    if (payload.startsWith("VDP1:")) {
+        // Player 1 setup scanned from Admin
+        const parts = payload.split(':');
+        roomPinCode = parts[1];
+        adminSettings = decodeCompactConfig(parts[2]);
+        setupPlayer1Lobby();
+    } else if (payload.startsWith("VDP2:")) {
+        // Player 2 scanned Player 1's screen
+        const parts = payload.split(':');
+        const hostPeerId = parts[1];
+        connectAsPlayer2(hostPeerId);
+    } else {
+        alert("無効なQRコード形式です。");
+    }
+}
+
+function submitManualPin() {
+    const inputPin = document.getElementById('manual-pin-input').value.trim();
+    if (!inputPin) return;
+
+    stopScanner();
+    if (isPlayer1) {
+        // Player 2 connecting via PIN directly
+        connectAsPlayer2(`VDROOM-${inputPin}`);
+    } else {
+        // Player 1 connecting via PIN
+        roomPinCode = inputPin;
+        setupPlayer1Lobby();
+    }
+}
+
+// Player 1 Setup
+function setupPlayer1Lobby() {
+    isPlayer1 = true;
+    showScreen('p1-lobby-screen');
+    stopScanner();
+
+    const peerId = `VDROOM-${roomPinCode}`;
+    document.getElementById('p1-pin-display').innerText = roomPinCode;
+
+    peer = new Peer(peerId);
+    peer.on('open', (id) => {
+        // Payload for P2: "VDP2:[PEER_ID]"
+        const payload = `VDP2:${id}`;
+        const qrContainer = document.getElementById('p2-pairing-qrcode');
+        qrContainer.innerHTML = '';
+        new QRCode(qrContainer, { text: payload, width: 180, height: 180 });
+    });
+
+    peer.on('connection', (connection) => {
+        conn = connection;
+        setupP2PConnection();
+    });
+
+    peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') {
+            peer = new Peer();
+            peer.on('open', (id) => {
+                const payload = `VDP2:${id}`;
+                const qrContainer = document.getElementById('p2-pairing-qrcode');
+                qrContainer.innerHTML = '';
+                new QRCode(qrContainer, { text: payload, width: 180, height: 180 });
+            });
+            peer.on('connection', (c) => { conn = c; setupP2PConnection(); });
+        }
+    });
+}
+
+// Player 2 Setup
+function connectAsPlayer2(hostPeerId) {
+    isPlayer1 = false;
+    showScreen('p1-lobby-screen');
+    document.getElementById('pairing-status').innerText = "Player 1 へ接続中...";
+
+    peer = new Peer();
+    peer.on('open', () => {
+        conn = peer.connect(hostPeerId);
+        setupP2PConnection();
+    });
+}
+
+function setupP2PConnection() {
+    conn.on('open', () => {
+        if (isPlayer1) {
+            sendPeerData({ type: 'START_MATCH', settings: adminSettings });
+            startRoundSequence(1);
+        }
+    });
+
+    conn.on('data', (data) => {
+        if (data.type === 'START_MATCH') {
+            adminSettings = data.settings;
+            startRoundSequence(1);
+        } else if (data.type === 'START_ROUND') {
+            currentRound = data.round;
+            startRoundSequence(currentRound);
+        } else if (data.type === 'SYNC') {
+            document.getElementById('opp-score-display').innerText = `スコア: ${data.score}`;
+            document.getElementById('opp-blocks-display').innerText = `ブロック: ${data.blockCount}`;
+            renderOpponentBoard(data.blocks);
+        } else if (data.type === 'GARBAGE') {
+            receiveGarbageBlocks(data.count);
+        }
+    });
+}
+
+function sendPeerData(data) {
+    if (conn && conn.open) conn.send(data);
+}
+
+function startRoundSequence(roundNum) {
+    currentRound = roundNum;
+    showScreen('game-screen');
+    
+    isGameOver = false;
+    isPreviewActive = true;
+    currentScore = 0;
+    streakCount = 0;
+    activeBlocks = [];
+    roundStats = { correctCount: 0, maxStreak: 0, bonusPoints: 0 };
+
+    clearInterval(dropInterval);
+    clearInterval(gameTimer);
+    clearInterval(previewCountdownInterval);
+
+    const overlay = document.getElementById('rule-preview-overlay');
+    const titleEl = document.getElementById('preview-round-title');
+    const ruleEl = document.getElementById('preview-rule-text');
+    const countEl = document.getElementById('preview-countdown');
+
+    overlay.style.display = 'flex';
+
+    const speedMs = adminSettings.dropSpeeds[currentRound];
+    const speedText = speedMs === 2500 ? "ゆっくり" : speedMs === 1500 ? "ふつう" : "速い";
+
+    if (currentRound === 1) {
+        titleEl.innerText = "ROUND 1: 英 → 和";
+        ruleEl.innerHTML = `ターゲットの英語に合う<br><b>日本語ブロック</b>をタップ！<br><br>制限時間: ${adminSettings.timers[1]}秒 | スピード: ${speedText}`;
+    } else if (currentRound === 2) {
+        titleEl.innerText = "ROUND 2: 和 → 英";
+        ruleEl.innerHTML = `ターゲットの日本語に合う<br><b>英単語ブロック</b>をタップ！<br><br>制限時間: ${adminSettings.timers[2]}秒 | スピード: ${speedText}`;
+    } else if (currentRound === 3) {
+        titleEl.innerText = "ROUND 3: 言い換え (Paraphrase)";
+        ruleEl.innerHTML = `英語の説明文に合う<br><b>英単語ブロック</b>をタップ！<br><br>制限時間: ${adminSettings.timers[3]}秒 | スピード: ${speedText}`;
+    }
+
+    let count = 10;
+    countEl.innerText = count;
+
+    previewCountdownInterval = setInterval(() => {
+        count--;
+        if (count > 0) {
+            countEl.innerText = count;
+        } else {
+            clearInterval(previewCountdownInterval);
+            overlay.style.display = 'none';
+            isPreviewActive = false;
+            setNextTarget();
+            startTimer();
+            dropInterval = setInterval(gameLoop, adminSettings.dropSpeeds[currentRound]);
+        }
+    }, 1000);
+}
+
+function setNextTarget() {
+    currentTarget = VOCAB_POOL[Math.floor(Math.random() * VOCAB_POOL.length)];
+    const labelEl = document.getElementById('target-label');
+    const wordEl = document.getElementById('target-word');
+
+    if (currentRound === 1) {
+        labelEl.innerText = "ターゲット (英語):";
+        wordEl.innerText = currentTarget.english;
+    } else if (currentRound === 2) {
+        labelEl.innerText = "ターゲット (日本語):";
+        wordEl.innerText = currentTarget.japanese;
+    } else if (currentRound === 3) {
+        labelEl.innerText = "言い換え (英語):";
+        wordEl.innerText = currentTarget.paraphrase;
+    }
+}
+
+function spawnBlock() {
+    if (isGameOver || isPreviewActive) return;
+
+    let selected = (Math.random() < 0.4 && currentTarget) 
+        ? currentTarget 
+        : VOCAB_POOL[Math.floor(Math.random() * VOCAB_POOL.length)];
+
+    let blockText = (currentRound === 1) ? selected.japanese : selected.english;
+    let randomCol = Math.floor(Math.random() * COLS);
+
+    if (activeBlocks.some(b => b.col === randomCol && b.row === 0)) return;
+
+    activeBlocks.push({
+        text: blockText,
+        type: selected.type,
+        col: randomCol,
+        row: 0,
+        isGarbage: false,
+        instanceId: Date.now() + Math.random()
+    });
+}
+
+function gameLoop() {
+    if (isGameOver || isPreviewActive) return;
+    for (let r = ROWS - 2; r >= 0; r--) {
+        activeBlocks.forEach(block => {
+            if (block.row === r) {
+                if (!activeBlocks.some(b => b.col === block.col && b.row === r + 1)) block.row++;
+            }
+        });
+    }
+    spawnBlock();
+    renderGame();
+}
+
+function handleBlockTap(clickedBlock) {
+    if (isGameOver || isPreviewActive || clickedBlock.isGarbage) return;
+
+    let index = activeBlocks.findIndex(b => b.instanceId === clickedBlock.instanceId);
+    if (index === -1) return;
+
+    let isCorrect = (currentRound === 1 && clickedBlock.text === currentTarget.japanese) ||
+                    (currentRound === 2 && clickedBlock.text === currentTarget.english) ||
+                    (currentRound === 3 && clickedBlock.text === currentTarget.english);
+
+    if (isCorrect) {
+        streakCount++;
+        roundStats.correctCount++;
+        if (streakCount > roundStats.maxStreak) roundStats.maxStreak = streakCount;
+
+        let bonus = (Math.min(streakCount, 5) - 1) * 25;
+        roundStats.bonusPoints += bonus;
+
+        currentScore += (100 + bonus);
+        activeBlocks.splice(index, 1);
+
+        if (streakCount >= adminSettings.garbageReq) {
+            sendPeerData({ type: 'GARBAGE', count: 1 });
+        }
+        setNextTarget();
+    } else {
+        streakCount = 0;
+        currentScore = Math.max(0, currentScore - 50);
+    }
+    renderGame();
+}
+
+function receiveGarbageBlocks(count) {
+    for (let i = 0; i < count; i++) {
+        let emptyCols = [0,1,2,3].filter(c => !activeBlocks.some(b => b.col === c && b.row === 0));
+        if (emptyCols.length > 0) {
+            let col = emptyCols[Math.floor(Math.random() * emptyCols.length)];
+            activeBlocks.push({ text: "おじゃま", type: "garbage", col: col, row: 0, isGarbage: true, instanceId: Date.now() + Math.random() });
+        }
+    }
+    renderGame();
+}
+
+function startTimer() {
+    timeLeft = adminSettings.timers[currentRound];
+    document.getElementById('timer-display').innerText = `残り時間: ${timeLeft}秒`;
+
+    gameTimer = setInterval(() => {
+        if (isGameOver || isPreviewActive) return;
+        timeLeft--;
+        document.getElementById('timer-display').innerText = `残り時間: ${timeLeft}秒`;
+
+        if (timeLeft <= 0) {
+            clearInterval(gameTimer);
+            finishRound();
+        }
+    }, 1000);
+}
+
+function finishRound() {
+    isGameOver = true;
+    clearInterval(dropInterval);
+    clearInterval(gameTimer);
+
+    totalScores[isPlayer1 ? 'p1' : 'p2'] += currentScore;
+    triggerCountUpResults();
+}
+
+function triggerCountUpResults() {
+    const modal = document.getElementById('results-modal');
+    document.getElementById('result-title').innerText = `ROUND ${currentRound} 結果発表`;
+    modal.style.display = 'flex';
+
+    const basePoints = roundStats.correctCount * 100;
+    const bonusPts = roundStats.bonusPoints;
+
+    document.getElementById('stat-correct').innerText = `${roundStats.correctCount} 回`;
+    document.getElementById('stat-streak').innerText = `${roundStats.maxStreak} 連鎖`;
+
+    animateValue('stat-base', 0, basePoints, 600, () => {
+        animateValue('stat-bonus', 0, bonusPts, 600, () => {
+            animateValue('stat-total', 0, currentScore, 800);
+        }, "+");
+    });
+}
+
+function animateValue(elementId, start, end, duration, prefix = "", callback = null) {
+    let obj = document.getElementById(elementId);
+    if (end === 0) {
+        obj.innerText = `${prefix}${end} pt`;
+        if (callback) callback();
+        return;
+    }
+    let startTimestamp = null;
+    const step = (timestamp) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        obj.innerText = `${prefix}${Math.floor(progress * (end - start) + start)} pt`;
+        if (progress < 1) window.requestAnimationFrame(step);
+        else if (callback) callback();
+    };
+    window.requestAnimationFrame(step);
+}
+
+function proceedToNextRound() {
+    document.getElementById('results-modal').style.display = 'none';
+    if (currentRound < 3) {
+        let nextR = currentRound + 1;
+        if (isPlayer1) {
+            sendPeerData({ type: 'START_ROUND', round: nextR });
+            startRoundSequence(nextR);
+        }
+    } else {
+        alert(`対戦終了！\n最終スコア: ${currentScore} pt`);
+    }
+}
+
+function renderGame() {
+    const matrix = document.getElementById('tetris-matrix');
+    matrix.querySelectorAll('.word-block').forEach(b => b.remove());
+
+    let cellWidth = matrix.clientWidth / COLS;
+    let cellHeight = matrix.clientHeight / ROWS;
+
+    activeBlocks.forEach(block => {
+        const el = document.createElement('div');
+        el.className = `word-block ${block.isGarbage ? 'garbage' : 'type-' + block.type}`;
+        el.innerText = block.text;
+        el.style.left = (block.col * cellWidth) + 2 + 'px';
+        el.style.top = (block.row * cellHeight) + 2 + 'px';
+        el.style.width = (cellWidth - 4) + 'px';
+        el.style.height = (cellHeight - 4) + 'px';
+
+        el.addEventListener('click', () => handleBlockTap(block));
+        matrix.appendChild(el);
+    });
+
+    document.getElementById('score-display').innerText = `スコア: ${currentScore}`;
+
+    sendPeerData({
+        type: 'SYNC',
+        score: currentScore,
+        blockCount: activeBlocks.length,
+        blocks: activeBlocks.map(b => ({ col: b.col, row: b.row, isGarbage: b.isGarbage, type: b.type }))
+    });
+}
+
+function renderOpponentBoard(oppBlocks) {
+    const matrix = document.getElementById('opponent-matrix');
+    matrix.querySelectorAll('.word-block').forEach(b => b.remove());
+
+    let cellWidth = matrix.clientWidth / COLS;
+    let cellHeight = matrix.clientHeight / ROWS;
+
+    (oppBlocks || []).forEach(block => {
+        const el = document.createElement('div');
+        el.className = `word-block ${block.isGarbage ? 'garbage' : 'type-' + block.type}`;
+        el.style.left = (block.col * cellWidth) + 1 + 'px';
+        el.style.top = (block.row * cellHeight) + 1 + 'px';
+        el.style.width = (cellWidth - 2) + 'px';
+        el.style.height = (cellHeight - 2) + 'px';
+        matrix.appendChild(el);
+    });
+}
+
+// Auto-route on load
+window.addEventListener('load', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const mode = urlParams.get('mode');
+
+    if (mode === 'scan') {
+        startScanner(processScannedPayload);
+    }
+});
+</script>
+</body>
+</html>
