@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Preset & 2-Player Battle Lobby</title>
+  
+  <!-- PeerJS CDN -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <!-- QRCode.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    .card {
+      background-color: #1e293b;
+      border-radius: 12px;
+      padding: 2rem;
+      max-width: 440px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    p {
+      color: #94a3b8;
+      font-size: 0.95rem;
+    }
+
+    .form-group {
+      margin: 1rem 0;
+      text-align: left;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 0.25rem;
+    }
+
+    select, input {
+      width: 100%;
+      padding: 0.5rem;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #fff;
+      box-sizing: border-box;
+    }
+
+    button {
+      width: 100%;
+      padding: 0.75rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 1rem;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    #qrcode-wrapper {
+      background: #ffffff;
+      padding: 16px;
+      border-radius: 8px;
+      display: inline-block;
+      margin: 1.5rem 0;
+      min-width: 200px;
+      min-height: 200px;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: #334155;
+      color: #38bdf8;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    
+    <!-- 1. ADMIN SETTINGS SCREEN (PLAYER 1) -->
+    <div id="admin-screen">
+      <h1>Admin Match Settings</h1>
+      <p>Configure battle settings before generating host QR code:</p>
+
+      <div class="form-group">
+        <label for="timeLimit">Time Limit (seconds):</label>
+        <select id="timeLimit">
+          <option value="60">60 Seconds</option>
+          <option value="120" selected>120 Seconds</option>
+          <option value="180">180 Seconds</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="difficulty">Difficulty / Speed:</label>
+        <select id="difficulty">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="garbageRate">Garbage Attack Multiplier:</label>
+        <select id="garbageRate">
+          <option value="1">1x (Standard)</option>
+          <option value="2">2x (Double Garbage)</option>
+        </select>
+      </div>
+
+      <button id="btn-create-game">Generate Match QR Code</button>
+    </div>
+
+    <!-- 2. HOST / PLAYER 1 LOBBY SCREEN -->
+    <div id="host-lobby-screen" class="hidden">
+      <h1>Player 1 (Host)</h1>
+      <p>Scan this QR code with Player 2's device to join with preset admin settings:</p>
+
+      <div id="qrcode-wrapper">
+        <div id="qrcode"></div>
+      </div>
+
+      <div>
+        <span id="host-status" class="status-badge">Initializing Peer Connection...</span>
+      </div>
+    </div>
+
+    <!-- 3. PLAYER 2 JOINING SCREEN -->
+    <div id="join-lobby-screen" class="hidden">
+      <h1>Player 2 (Joining)</h1>
+      <p>Loading preset admin settings and connecting...</p>
+      <div>
+        <span id="client-status" class="status-badge">Connecting to Host...</span>
+      </div>
+    </div>
+
+    <!-- 4. ACTIVE GAME SCREEN -->
+    <div id="game-screen" class="hidden">
+      <h1>Battle Active</h1>
+      <p id="active-settings-display"></p>
+    </div>
+
+  </div>
+
+  <script>
+    let activeSettings = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const configParam = urlParams.get("config");
+
+      if (configParam) {
+        // PLAYER 2 FLOW: Joining via scanned QR code URL
+        initPlayer2(configParam);
+      } else {
+        // PLAYER 1 / ADMIN FLOW: Show admin controls first
+        setupAdminScreen();
+      }
+    });
+
+    // --- 1. ADMIN SETUP (PLAYER 1) ---
+    function setupAdminScreen() {
+      document.getElementById("btn-create-game").addEventListener("click", () => {
+        // Collect form values into compact config keys to keep QR payload small
+        activeSettings = {
+          t: parseInt(document.getElementById("timeLimit").value, 10),
+          d: document.getElementById("difficulty").value,
+          g: parseInt(document.getElementById("garbageRate").value, 10)
+        };
+
+        // Switch screen to Lobby
+        document.getElementById("admin-screen").classList.add("hidden");
+        document.getElementById("host-lobby-screen").classList.remove("hidden");
+
+        // Start PeerJS connection for Player 1
+        initPlayer1Host();
+      });
+    }
+
+    // --- 2. PLAYER 1 HOST LOGIC ---
+    function initPlayer1Host() {
+      const peer = new Peer();
+
+      peer.on("open", (peerId) => {
+        console.log("Player 1 Peer ID created:", peerId);
+        document.getElementById("host-status").textContent = "Waiting for Player 2...";
+
+        // Attach peerId to admin settings
+        const fullPayload = {
+          ...activeSettings,
+          h: peerId,
+          r: "p2"
+        };
+
+        renderQRCode(fullPayload);
+      });
+
+      peer.on("connection", (conn) => {
+        console.log("Player 2 connected:", conn.peer);
+        document.getElementById("host-status").textContent = "Connected!";
+
+        conn.on("open", () => {
+          startGame(conn, activeSettings);
+        });
+      });
+
+      peer.on("error", (err) => {
+        console.error("PeerJS Host Error:", err);
+        document.getElementById("host-status").textContent = "Connection Error";
+      });
+    }
+
+    function renderQRCode(payload) {
+      const container = document.getElementById("qrcode");
+      container.innerHTML = ""; // Clear existing elements
+
+      // 1. Build dynamic origin URL pointing to Vercel route
+      const baseUrl = window.location.origin + window.location.pathname;
+      const encodedConfig = encodeURIComponent(JSON.stringify(payload));
+      const targetUrl = `${baseUrl}?config=${encodedConfig}`;
+
+      console.log("Generated Target QR URL:", targetUrl);
+
+      // 2. Wrap in setTimeout to ensure host-lobby-screen container dimensions are computed
+      setTimeout(() => {
+        new QRCode(container, {
+          text: targetUrl,
+          width: 200,
+          height: 200,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      }, 100);
+    }
+
+    // --- 3. PLAYER 2 CLIENT LOGIC ---
+    function initPlayer2(configParam) {
+      document.getElementById("admin-screen").classList.add("hidden");
+      document.getElementById("join-lobby-screen").classList.remove("hidden");
+
+      try {
+        const decoded = JSON.parse(decodeURIComponent(configParam));
+        
+        const hostId = decoded.h;
+        activeSettings = {
+          t: decoded.t,
+          d: decoded.d,
+          g: decoded.g
+        };
+
+        console.log("Parsed preset settings from Admin URL:", activeSettings);
+
+        const peer = new Peer();
+
+        peer.on("open", (myId) => {
+          console.log("Player 2 initialized with ID:", myId);
+          
+          const conn = peer.connect(hostId);
+
+          conn.on("open", () => {
+            console.log("Successfully connected to Player 1 Host!");
+            document.getElementById("client-status").textContent = "Connected!";
+            startGame(conn, activeSettings);
+          });
+
+          conn.on("error", (err) => {
+            console.error("Connection failed:", err);
+            document.getElementById("client-status").textContent = "Failed to Connect";
+          });
+        });
+
+      } catch (err) {
+        console.error("Invalid QR configuration payload:", err);
+        document.getElementById("client-status").textContent = "Invalid QR Code Data";
+      }
+    }
+
+    // --- 4. GAME TRANSITION ---
+    function startGame(conn, settings) {
+      document.getElementById("host-lobby-screen").classList.add("hidden");
+      document.getElementById("join-lobby-screen").classList.add("hidden");
+      document.getElementById("game-screen").classList.remove("hidden");
+
+      document.getElementById("active-settings-display").textContent = 
+        `Time: ${settings.t}s | Difficulty: ${settings.d} | Garbage Multiplier: ${settings.g}x`;
+
+      conn.on("data", (data) => {
+        console.log("Game data received:", data);
+      });
+    }
+  </script>
+</body>
+</html>
