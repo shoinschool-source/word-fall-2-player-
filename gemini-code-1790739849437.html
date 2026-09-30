@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>単語パズル対戦 - Sentence & Vocab Battle</title>
+    <!-- PeerJS for WebRTC -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- QRCode.js for Admin/Host QR generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-bg: #1e1e24;
+            --accent-p1: #3b82f6;
+            --accent-p2: #ef4444;
+            --text-main: #f3f4f6;
+            --text-sub: #9ca3af;
+            --border-color: #374151;
+            --garbage-color: #4b5563;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .view-panel {
+            display: none;
+            width: 100%;
+            max-width: 900px;
+            padding: 20px;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .view-panel.active {
+            display: flex;
+        }
+
+        /* --- Admin Screen --- */
+        .admin-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.9rem;
+            color: var(--text-sub);
+            margin-bottom: 6px;
+        }
+
+        select, button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: #2a2a32;
+            color: #fff;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        button.btn-primary {
+            background: var(--accent-p1);
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: opacity 0.2s;
+        }
+
+        button.btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        #qrcode {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            background: #fff;
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        /* --- Game Screen --- */
+        .game-header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            background: var(--card-bg);
+            padding: 12px 20px;
+            border-radius: 8px;
+        }
+
+        .target-box {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #f59e0b;
+        }
+
+        .battle-arena {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .board-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, 60px);
+            grid-template-rows: repeat(7, 60px);
+            gap: 4px;
+            background: #18181b;
+            padding: 6px;
+            border-radius: 8px;
+            border: 2px solid var(--border-color);
+            position: relative;
+        }
+
+        .grid-opponent {
+            grid-template-columns: repeat(5, 24px);
+            grid-template-rows: repeat(7, 24px);
+            gap: 2px;
+            padding: 4px;
+        }
+
+        .block {
+            background: #27272a;
+            border: 1px solid #3f3f46;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.85rem;
+            font-weight: bold;
+            text-align: center;
+            cursor: pointer;
+            word-break: break-word;
+            padding: 2px;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+
+        .block:active {
+            transform: scale(0.95);
+        }
+
+        .block.garbage {
+            background: var(--garbage-color);
+            border-color: #6b7280;
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .opponent-block {
+            background: #3f3f46;
+            border-radius: 2px;
+        }
+
+        .opponent-block.garbage {
+            background: var(--garbage-color);
+        }
+
+        /* --- Modal Overlays --- */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 450px;
+            width: 90%;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .shake {
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-8px); }
+            40%, 80% { transform: translateX(8px); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. ADMIN CONFIGURATION VIEW -->
+    <div id="view-admin" class="view-panel active">
+        <div class="admin-card">
+            <h2>対戦ルーム設定 (Admin)</h2>
+            <br>
+            <div class="form-group">
+                <label>1ラウンドの時間 (秒)</label>
+                <select id="cfg-timer">
+                    <option value="30">30 秒</option>
+                    <option value="60" selected>60 秒</option>
+                    <option value="90">90 秒</option>
+                    <option value="120">120 秒</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>ブロック落下スピード</label>
+                <select id="cfg-speed">
+                    <option value="2000">低速 (2.0s)</option>
+                    <option value="1200" selected>標準 (1.2s)</option>
+                    <option value="800">高速 (0.8s)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>おじゃま攻撃に必要なコンボ数</label>
+                <select id="cfg-garbage">
+                    <option value="2">2 連続正解</option>
+                    <option value="3" selected>3 連続正解</option>
+                    <option value="4">4 連続正解</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>溢れペナルティ (溢れた際の減点)</label>
+                <select id="cfg-penalty">
+                    <option value="200">200 pt</option>
+                    <option value="300" selected>300 pt</option>
+                    <option value="500">500 pt</option>
+                </select>
+            </div>
+            <button class="btn-primary" onclick="generateHostQR()">ルーム作成 (QR生成)</button>
+            <div id="qrcode"></div>
+        </div>
+    </div>
+
+    <!-- 2. GAME VIEW -->
+    <div id="view-game" class="view-panel">
+        <div class="game-header">
+            <div>ラウンド: <span id="disp-round">1</span>/3</div>
+            <div class="target-box">ターゲット: <span id="disp-target">---</span></div>
+            <div>残り時間: <span id="disp-timer">60</span>s</div>
+        </div>
+
+        <div class="battle-arena">
+            <!-- Player Board -->
+            <div class="board-container">
+                <div style="margin-bottom: 8px; font-weight: bold;">あなた (<span id="disp-my-score">0</span> pt)</div>
+                <div id="player-grid" class="grid"></div>
+            </div>
+
+            <!-- Opponent Board (Mini Matrix) -->
+            <div class="board-container">
+                <div style="margin-bottom: 8px; font-weight: bold; color: var(--text-sub);">相手 (<span id="disp-opp-score">0</span> pt)</div>
+                <div id="opponent-grid" class="grid grid-opponent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. PRE-ROUND MODAL -->
+    <div id="modal-preround" class="modal">
+        <div class="modal-content">
+            <h2 id="preround-title">Round 1</h2>
+            <p id="preround-desc" style="margin: 15px 0; color: var(--text-sub);">英単語に対応する日本語を選べ！</p>
+            <h3>準備時間: <span id="preround-count">10</span></h3>
+        </div>
+    </div>
+
+    <!-- 4. RESULTS MODAL -->
+    <div id="modal-results" class="modal">
+        <div class="modal-content">
+            <h2 id="results-title">ラウンド終了</h2>
+            <div style="margin: 20px 0; text-align: left; line-height: 1.8;">
+                <div>基本スコア: <span id="res-base">0</span></div>
+                <div>コンボボーナス: <span id="res-combo">0</span></div>
+                <div>溢れペナルティ: -<span id="res-penalty">0</span></div>
+                <hr style="border-color: var(--border-color); margin: 10px 0;">
+                <div style="font-size: 1.2rem; font-weight: bold;">獲得スコア: <span id="res-total">0</span></div>
+            </div>
+            <div id="match-summary" style="display: none; margin-bottom: 15px; font-weight: bold; color: #f59e0b;"></div>
+            <button id="btn-next-round" class="btn-primary" onclick="proceedNextStep()">次のラウンドへ</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTS & VOCABULARY ---
+        const COLS = 5;
+        const ROWS = 7;
+        const VOCAB_POOL = [
+            { en: "Apple", ja: "りんご", desc: "A round red or green fruit" },
+            { en: "Book", ja: "本", desc: "Pages bound together to read" },
+            { en: "Cat", ja: "猫", desc: "A small domesticated feline" },
+            { en: "Dog", ja: "犬", desc: "A loyal four-legged pet" },
+            { en: "Elephant", ja: "象", desc: "A large grey mammal with a trunk" },
+            { en: "Friend", ja: "友達", desc: "A person you know and like" },
+            { en: "Garden", ja: "庭", desc: "An outdoor area with plants" },
+            { en: "House", ja: "家", desc: "A building for living in" }
+        ];
+
+        // --- GAME STATE VARIABLES ---
+        let playerRole = 'admin'; // 'p1' or 'p2'
+        let peer = null;
+        let conn = null;
+
+        let adminSettings = {
+            timer: 60,
+            speed: 1200,
+            garbageStreakReq: 3,
+            overflowPenalty: 300
+        };
+
+        let currentRound = 1;
+        let roundScore = 0;
+        let oppScore = 0;
+        let streakCount = 0;
+        let basePointsCount = 0;
+        let comboPointsCount = 0;
+        let penaltyCount = 0;
+        let activeBlocks = []; // Array of { id, text, col, row, isGarbage }
+        let currentTarget = null;
+        
+        let gameInterval = null;
+        let timerInterval = null;
+        let roundTimeLeft = 60;
+
+        let cumulativeScores = { me: 0, opp: 0 };
+
+        // --- INITIALIZATION & ROUTING ---
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roleParam = urlParams.get('role');
+            const peerParam = urlParams.get('peer');
+            const configParam = urlParams.get('config');
+
+            if (roleParam === 'p2' && peerParam) {
+                // Player 2 Flow
+                playerRole = 'p2';
+                switchView('view-game');
+                initPeerAsP2(peerParam);
+            } else if (configParam) {
+                // Player 1 Flow (from Admin QR)
+                playerRole = 'p1';
+                adminSettings = JSON.parse(decodeURIComponent(configParam));
+                switchView('view-game');
+                initPeerAsP1();
+            }
+        });
+
+        function switchView(viewId) {
+            document.querySelectorAll('.view-panel').forEach(el => el.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+        }
+
+        function readFormSettings() {
+            adminSettings.timer = parseInt(document.getElementById('cfg-timer').value);
+            adminSettings.speed = parseInt(document.getElementById('cfg-speed').value);
+            adminSettings.garbageStreakReq = parseInt(document.getElementById('cfg-garbage').value);
+            adminSettings.overflowPenalty = parseInt(document.getElementById('cfg-penalty').value);
+        }
+
+        function generateHostQR() {
+            readFormSettings();
+            const configStr = encodeURIComponent(JSON.stringify(adminSettings));
+            const hostUrl = `${window.location.origin}${window.location.pathname}?role=p1&config=${configStr}`;
+            
+            document.getElementById('qrcode').innerHTML = "";
+            new QRCode(document.getElementById('qrcode'), {
+                text: hostUrl,
+                width: 180,
+                height: 180
+            });
+        }
+
+        // --- PEERJS NETWORKING ---
+        function initPeerAsP1() {
+            peer = new Peer();
+            peer.on('open', (id) => {
+                console.log('P1 ID:', id);
+                // Prompt P1 with QR code link for P2
+                const p2Url = `${window.location.origin}${window.location.pathname}?role=p2&peer=${id}`;
+                alert("Player 2 Invitation Link:\n" + p2Url);
+            });
+
+            peer.on('connection', (c) => {
+                conn = c;
+                setupConnectionListeners();
+                // Send setup details to P2
+                setTimeout(() => {
+                    sendPeerData({ type: 'START_PREROUND', round: 1, config: adminSettings });
+                    startPreRound(1);
+                }, 500);
+            });
+        }
+
+        function initPeerAsP2(hostId) {
+            peer = new Peer();
+            peer.on('open', () => {
+                conn = peer.connect(hostId);
+                setupConnectionListeners();
+            });
+        }
+
+        function setupConnectionListeners() {
+            conn.on('data', (data) => {
+                if (data.type === 'START_PREROUND') {
+                    if (data.config) adminSettings = data.config;
+                    startPreRound(data.round);
+                } else if (data.type === 'SYNC_BOARD') {
+                    oppScore = data.score;
+                    document.getElementById('disp-opp-score').innerText = oppScore;
+                    renderOpponentGrid(data.blocks);
+                } else if (data.type === 'GARBAGE') {
+                    receiveGarbageBlocks(data.count);
+                }
+            });
+        }
+
+        function sendPeerData(data) {
+            if (conn && conn.open) {
+                conn.send(data);
+            }
+        }
+
+        // --- PRE-ROUND SEQUENCE ---
+        function startPreRound(roundNum) {
+            currentRound = roundNum;
+            document.getElementById('disp-round').innerText = currentRound;
+            
+            const modal = document.getElementById('modal-preround');
+            const title = document.getElementById('preround-title');
+            const desc = document.getElementById('preround-desc');
+            const countDisp = document.getElementById('preround-count');
+
+            title.innerText = `Round ${currentRound}`;
+            if (currentRound === 1) desc.innerText = "英単語に対応する日本語を選べ！";
+            else if (currentRound === 2) desc.innerText = "日本語に対応する英単語を選べ！";
+            else desc.innerText = "説明文(パラフレーズ)に対応する英単語を選べ！";
+
+            modal.classList.add('active');
+            let timer = 10;
+            countDisp.innerText = timer;
+
+            const preInterval = setInterval(() => {
+                timer--;
+                countDisp.innerText = timer;
+                if (timer <= 0) {
+                    clearInterval(preInterval);
+                    modal.classList.remove('active');
+                    startActualRound();
+                }
+            }, 1000);
+        }
+
+        // --- GAME LOOP & CORE LOGIC ---
+        function startActualRound() {
+            // Reset round variables
+            roundScore = 0;
+            streakCount = 0;
+            basePointsCount = 0;
+            comboPointsCount = 0;
+            penaltyCount = 0;
+            activeBlocks = [];
+            roundTimeLeft = adminSettings.timer;
+
+            document.getElementById('disp-my-score').innerText = 0;
+            document.getElementById('disp-timer').innerText = roundTimeLeft;
+
+            setNextTarget();
+            initEmptyGridUI();
+
+            // Main loop
+            gameInterval = setInterval(gameLoop, adminSettings.speed);
+            
+            // Timer loop
+            timerInterval = setInterval(() => {
+                roundTimeLeft--;
+                document.getElementById('disp-timer').innerText = roundTimeLeft;
+                if (roundTimeLeft <= 0) {
+                    endRound();
+                }
+            }, 1000);
+        }
+
+        function setNextTarget() {
+            const item = VOCAB_POOL[Math.floor(Math.random() * VOCAB_POOL.length)];
+            let targetDisp = "";
+            let reqText = "";
+
+            if (currentRound === 1) {
+                targetDisp = item.en;
+                reqText = item.ja;
+            } else if (currentRound === 2) {
+                targetDisp = item.ja;
+                reqText = item.en;
+            } else {
+                targetDisp = item.desc;
+                reqText = item.en;
+            }
+
+            currentTarget = { display: targetDisp, targetWord: reqText };
+            document.getElementById('disp-target').innerText = currentTarget.display;
+        }
+
+        function gameLoop() {
+            applyGravity();
+            spawnBlock();
+            renderGame();
+        }
+
+        function applyGravity() {
+            // Traverse bottom to top
+            for (let r = ROWS - 2; r >= 0; r--) {
+                for (let c = 0; c < COLS; c++) {
+                    const block = getBlockAt(c, r);
+                    if (block && !getBlockAt(c, r + 1)) {
+                        block.row += 1;
+                    }
+                }
+            }
+        }
+
+        function getBlockAt(col, row) {
+            return activeBlocks.find(b => b.col === col && b.row === row);
+        }
+
+        // OPTION B IMPLEMENTATION: Dynamic Target Spawning Logic
+        function spawnBlock() {
+            // Check if the target is already present on the active grid
+            const targetIsOnBoard = activeBlocks.some(b => b.text === currentTarget.targetWord);
+
+            // Dynamic Spawn Rate:
+            // - If target already exists on board: throttle to 10% (prevents duplicates/clutter)
+            // - If target is missing: boost to 45% (guarantees dynamic prompt availability)
+            const spawnChance = targetIsOnBoard ? 0.10 : 0.45;
+
+            let selectedText = "";
+            if (Math.random() < spawnChance) {
+                selectedText = currentTarget.targetWord;
+            } else {
+                selectedText = getRandomDistractor();
+            }
+
+            // Find free columns at row 0
+            const freeCols = [];
+            for (let c = 0; c < COLS; c++) {
+                if (!getBlockAt(c, 0)) freeCols.push(c);
+            }
+
+            if (freeCols.length === 0) {
+                handleOverflow();
+                return;
+            }
+
+            const targetCol = freeCols[Math.floor(Math.random() * freeCols.length)];
+            activeBlocks.push({
+                id: Date.now() + Math.random(),
+                text: selectedText,
+                col: targetCol,
+                row: 0,
+                isGarbage: false
+            });
+        }
+
+        function getRandomDistractor() {
+            const item = VOCAB_POOL[Math.floor(Math.random() * VOCAB_POOL.length)];
+            return (currentRound === 1) ? item.ja : item.en;
+        }
+
+        function handleBlockTap(block) {
+            if (block.isGarbage) return;
+
+            if (block.text === currentTarget.targetWord) {
+                // Correct Match
+                streakCount++;
+                basePointsCount += 100;
+                
+                const comboBonus = (Math.min(streakCount, 5) - 1) * 20;
+                comboPointsCount += comboBonus;
+
+                roundScore += (100 + comboBonus);
+
+                // Garbage Attack Trigger
+                if (streakCount >= adminSettings.garbageStreakReq) {
+                    sendPeerData({ type: 'GARBAGE', count: 1 });
+                }
+
+                // Remove matched block
+                activeBlocks = activeBlocks.filter(b => b.id !== block.id);
+                setNextTarget();
+            } else {
+                // Incorrect Match
+                streakCount = 0;
+                roundScore = Math.max(0, roundScore - 30);
+            }
+
+            document.getElementById('disp-my-score').innerText = roundScore;
+            renderGame();
+        }
+
+        function receiveGarbageBlocks(count) {
+            for (let i = 0; i < count; i++) {
+                const freeCols = [];
+                for (let c = 0; c < COLS; c++) {
+                    if (!getBlockAt(c, 0)) freeCols.push(c);
+                }
+
+                if (freeCols.length > 0) {
+                    const col = freeCols[Math.floor(Math.random() * freeCols.length)];
+                    activeBlocks.push({
+                        id: Date.now() + Math.random(),
+                        text: "おじゃま",
+                        col: col,
+                        row: 0,
+                        isGarbage: true
+                    });
+                } else {
+                    handleOverflow();
+                }
+            }
+            renderGame();
+        }
+
+        function handleOverflow() {
+            penaltyCount += adminSettings.overflowPenalty;
+            roundScore = Math.max(0, roundScore - adminSettings.overflowPenalty);
+            document.getElementById('disp-my-score').innerText = roundScore;
+
+            const gridEl = document.getElementById('player-grid');
+            gridEl.classList.add('shake');
+            setTimeout(() => gridEl.classList.remove('shake'), 500);
+
+            // Clear board
+            activeBlocks = [];
+        }
+
+        // --- RENDERING & UI UPDATES ---
+        function initEmptyGridUI() {
+            const gridEl = document.getElementById('player-grid');
+            gridEl.innerHTML = "";
+            for (let i = 0; i < ROWS * COLS; i++) {
+                const placeholder = document.createElement('div');
+                placeholder.style.border = "1px dashed #27272a";
+                placeholder.style.borderRadius = "4px";
+                gridEl.appendChild(placeholder);
+            }
+        }
+
+        function renderGame() {
+            const gridEl = document.getElementById('player-grid');
+            gridEl.innerHTML = "";
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const block = getBlockAt(c, r);
+                    const cell = document.createElement('div');
+                    
+                    if (block) {
+                        cell.className = `block ${block.isGarbage ? 'garbage' : ''}`;
+                        cell.innerText = block.text;
+                        cell.onclick = () => handleBlockTap(block);
+                    } else {
+                        cell.style.border = "1px dashed #27272a";
+                        cell.style.borderRadius = "4px";
+                    }
+                    gridEl.appendChild(cell);
+                }
+            }
+
+            // Sync matrix state to peer
+            sendPeerData({
+                type: 'SYNC_BOARD',
+                score: roundScore,
+                blocks: activeBlocks.map(b => ({ col: b.col, row: b.row, isGarbage: b.isGarbage }))
+            });
+        }
+
+        function renderOpponentGrid(oppBlocks) {
+            const gridEl = document.getElementById('opponent-grid');
+            gridEl.innerHTML = "";
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const block = oppBlocks.find(b => b.col === c && b.row === r);
+                    const cell = document.createElement('div');
+                    
+                    if (block) {
+                        cell.className = `opponent-block ${block.isGarbage ? 'garbage' : ''}`;
+                    } else {
+                        cell.style.background = "#18181b";
+                    }
+                    gridEl.appendChild(cell);
+                }
+            }
+        }
+
+        // --- END-OF-ROUND & RESULTS LOGIC ---
+        function endRound() {
+            clearInterval(gameInterval);
+            clearInterval(timerInterval);
+
+            cumulativeScores.me += roundScore;
+            cumulativeScores.opp += oppScore;
+
+            document.getElementById('res-base').innerText = basePointsCount;
+            document.getElementById('res-combo').innerText = comboPointsCount;
+            document.getElementById('res-penalty').innerText = penaltyCount;
+            document.getElementById('res-total').innerText = roundScore;
+
+            const modal = document.getElementById('modal-results');
+            const summaryBox = document.getElementById('match-summary');
+            const nextBtn = document.getElementById('btn-next-round');
+
+            if (currentRound >= 3) {
+                summaryBox.style.display = "block";
+                if (cumulativeScores.me > cumulativeScores.opp) {
+                    summaryBox.innerText = `YOU WIN! (Total: ${cumulativeScores.me} vs ${cumulativeScores.opp})`;
+                } else if (cumulativeScores.me < cumulativeScores.opp) {
+                    summaryBox.innerText = `YOU LOSE! (Total: ${cumulativeScores.me} vs ${cumulativeScores.opp})`;
+                } else {
+                    summaryBox.innerText = `DRAW! (Total: ${cumulativeScores.me} vs ${cumulativeScores.opp})`;
+                }
+                nextBtn.innerText = "大会セットアップに戻る";
+            } else {
+                summaryBox.style.display = "none";
+                nextBtn.innerText = "次のラウンドへ";
+            }
+
+            modal.classList.add('active');
+        }
+
+        function proceedNextStep() {
+            document.getElementById('modal-results').classList.remove('active');
+            if (currentRound < 3) {
+                const nextR = currentRound + 1;
+                sendPeerData({ type: 'START_PREROUND', round: nextR });
+                startPreRound(nextR);
+            } else {
+                window.location.href = window.location.pathname; // Return to Admin Setup
+            }
+        }
+    </script>
+</body>
+</html>
