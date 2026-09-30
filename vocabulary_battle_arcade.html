@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vocabulary Battle Arcade</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --panel-bg: #16213e;
+            --accent-color: #0f3460;
+            --text-color: #e94560;
+            --garbage-color: #4a4e69;
+            --font-main: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: #ffffff;
+            font-family: var(--font-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            max-width: 620px;
+            width: 100%;
+            position: relative;
+        }
+
+        /* Top Right Live Opponent Score Badge */
+        .opponent-score-badge {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: rgba(15, 52, 96, 0.85);
+            border: 1px solid var(--text-color);
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 0.85em;
+            font-weight: bold;
+            color: #f1c40f;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Admin & Lobby Settings Panel */
+        .admin-panel {
+            width: 100%;
+            background: #0f0f1b;
+            padding: 12px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-sizing: border-box;
+            border: 1px solid var(--accent-color);
+            margin-top: 25px; /* Leave space for opponent badge */
+        }
+
+        .admin-title {
+            font-size: 0.85em;
+            font-weight: bold;
+            color: #f1c40f;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #2b2d42;
+            padding-bottom: 4px;
+        }
+
+        .admin-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.85em;
+        }
+
+        .admin-row input, .admin-row select {
+            padding: 6px;
+            border-radius: 4px;
+            border: 1px solid var(--accent-color);
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 0.9em;
+        }
+
+        .status-badge {
+            font-size: 0.85em;
+            font-weight: bold;
+            color: #f1c40f;
+        }
+
+        .target-box {
+            width: 100%;
+            background: var(--accent-color);
+            padding: 12px;
+            border-radius: 8px;
+            border: 2px solid var(--text-color);
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        .target-label {
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #8d99ae;
+        }
+
+        .target-word {
+            font-size: 1.6em;
+            font-weight: bold;
+            color: #ffffff;
+            margin-top: 4px;
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            font-size: 1em;
+            font-weight: 600;
+        }
+
+        .timer-highlight {
+            color: #e74c3c;
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+
+        #grid-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-template-rows: repeat(8, 55px);
+            gap: 6px;
+            background-color: #0f0f1b;
+            padding: 10px;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        .block {
+            background-color: #2b2d42;
+            border: 2px solid #4a4e69;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 4px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.1s ease, background-color 0.2s ease;
+            word-break: break-word;
+        }
+
+        .block:hover {
+            transform: scale(1.03);
+            background-color: #3d405b;
+        }
+
+        .block.garbage {
+            background-color: var(--garbage-color);
+            border-color: #6c757d;
+            color: #adb5bd;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            font-size: 0.95em;
+            font-weight: bold;
+            color: #ffffff;
+            background-color: var(--text-color);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        button:hover {
+            background-color: #d63447;
+        }
+
+        #notification-banner {
+            display: none;
+            position: absolute;
+            top: 55px;
+            background: #e74c3c;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 20;
+            animation: fadeInOut 2s ease forwards;
+        }
+
+        #game-over-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.88);
+            border-radius: 8px;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            padding: 20px;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        #game-over-overlay h2 {
+            color: var(--text-color);
+            font-size: 1.8em;
+            margin-bottom: 8px;
+        }
+
+        .score-tally {
+            font-size: 1.1em;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            color: #a8b2d1;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(-10px); }
+            15% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+    </style>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Live Opponent Score in Top Right -->
+    <div class="opponent-score-badge">
+        <span>⚔️ Opponent:</span>
+        <span id="opponent-score-display">--</span>
+    </div>
+
+    <div id="notification-banner"></div>
+
+    <!-- Admin Settings & Battle Lobby -->
+    <div class="admin-panel">
+        <div class="admin-title">⚙️ Admin Settings & Battle Lobby</div>
+        
+        <div class="admin-row">
+            <span>Round 1 (EN→JP):</span>
+            <select id="r1-time">
+                <option value="60">1 Min</option>
+                <option value="90" selected>1.5 Mins</option>
+                <option value="120">2 Mins</option>
+                <option value="180">3 Mins</option>
+            </select>
+            
+            <span>Round 2 (JP→EN):</span>
+            <select id="r2-time">
+                <option value="60">1 Min</option>
+                <option value="90" selected>1.5 Mins</option>
+                <option value="120">2 Mins</option>
+                <option value="180">3 Mins</option>
+            </select>
+
+            <span>Round 3 (Grid Wipe):</span>
+            <select id="r3-time">
+                <option value="60">1 Min</option>
+                <option value="90" selected>1.5 Mins</option>
+                <option value="120">2 Mins</option>
+                <option value="180">3 Mins</option>
+            </select>
+        </div>
+
+        <div class="admin-row">
+            <span>Your ID: <strong id="my-peer-id">Connecting...</strong></span>
+            <span id="status-badge" class="status-badge">Single Player</span>
+        </div>
+
+        <div class="admin-row">
+            <input type="text" id="opponent-id-input" placeholder="Enter Opponent ID" style="flex:1;">
+            <button onclick="connectToPeer()" style="flex:0 0 100px; padding:6px;">Connect</button>
+        </div>
+    </div>
+
+    <div class="target-box">
+        <div class="target-label" id="round-label">Round 1: Tap matching Japanese word</div>
+        <div class="target-word" id="target-display">---</div>
+    </div>
+
+    <div class="stats-bar">
+        <span>Time Left: <span id="timer-display" class="timer-highlight">01:30</span></span>
+        <span>Your Score: <span id="score-display">0</span></span>
+        <span>Streak: <span id="streak-display">0</span></span>
+    </div>
+
+    <div id="grid-container">
+        <div id="game-over-overlay">
+            <h2 id="game-over-title">Match Finished!</h2>
+            <div id="score-tally-display" class="score-tally"></div>
+            <button onclick="resetGame()">Play Again</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="start-btn" onclick="startGame()">Start Match</button>
+    </div>
+</div>
+
+<script>
+    const VOCAB_POOL = [
+        { type: "nevertheless", english: "nevertheless", japanese: "それにもかかわらず" },
+        { type: "South Sudan", english: "South Sudan", japanese: "南スーダン" },
+        { type: "unite", english: "unite", japanese: "結びつける" },
+        { type: "teammate", english: "teammate", japanese: "チームメイト" },
+        { type: "focus", english: "focus", japanese: "集中する" },
+        { type: "cohesion", english: "cohesion", japanese: "団結" },
+        { type: "highlight", english: "highlight", japanese: "ハイライト" },
+        { type: "tackle", english: "tackle", japanese: "タックルする" },
+        { type: "fierce", english: "fierce", japanese: "激しい" },
+        { type: "embrace", english: "embrace", japanese: "抱きしめる" },
+        { type: "legend", english: "legend", japanese: "伝説" },
+        { type: "impression", english: "impression", japanese: "印象" },
+        { type: "yearn", english: "yearn", japanese: "切望する" },
+        { type: "forgive", english: "forgive", japanese: "許す" },
+        { type: "comrade", english: "comrade", japanese: "仲間" },
+        { type: "permanent", english: "permanent", japanese: "永久の" },
+        { type: "revitalize", english: "revitalize", japanese: "復興させる" }
+    ];
+
+    const COLS = 5;
+    const ROWS = 8;
+    
+    let activeBlocks = [];
+    let currentTarget = null;
+    let score = 0;
+    let streak = 0;
+    let opponentScore = 0;
+    let currentRound = 1;
+    let roundTimeRemaining = 90;
+    let gameInterval = null;
+    let timerInterval = null;
+    let isRunning = false;
+    
+    // Cumulative scores across rounds
+    let roundScores = { r1: 0, r2: 0, r3: 0 };
+
+    // SHUFFLE DECK (BAG SYSTEM)
+    let spawnDeck = [];
+
+    // PEERJS VARIABLES
+    let peer = null;
+    let conn = null;
+
+    function initPeer() {
+        peer = new Peer();
+
+        peer.on('open', (id) => {
+            document.getElementById('my-peer-id').textContent = id;
+        });
+
+        peer.on('connection', (connection) => {
+            conn = connection;
+            setupConnectionHandlers();
+        });
+    }
+
+    function connectToPeer() {
+        const targetId = document.getElementById('opponent-id-input').value.trim();
+        if (!targetId) return;
+        conn = peer.connect(targetId);
+        setupConnectionHandlers();
+    }
+
+    function setupConnectionHandlers() {
+        conn.on('open', () => {
+            document.getElementById('status-badge').textContent = 'Battle Mode Connected!';
+            document.getElementById('status-badge').style.color = '#2ecc71';
+            document.getElementById('opponent-score-display').textContent = '0';
+            broadcastScore();
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'GARBAGE') {
+                receiveGarbage(data.amount);
+            } else if (data.type === 'SCORE_UPDATE') {
+                opponentScore = data.score;
+                document.getElementById('opponent-score-display').textContent = opponentScore;
+            }
+        });
+
+        conn.on('close', () => {
+            document.getElementById('status-badge').textContent = 'Disconnected';
+            document.getElementById('status-badge').style.color = '#e74c3c';
+            document.getElementById('opponent-score-display').textContent = '--';
+        });
+    }
+
+    function broadcastScore() {
+        if (conn && conn.open) {
+            conn.send({
+                type: 'SCORE_UPDATE',
+                score: score
+            });
+        }
+    }
+
+    function getNextFromShuffleDeck() {
+        if (spawnDeck.length === 0) {
+            spawnDeck = [...VOCAB_POOL];
+            for (let i = spawnDeck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [spawnDeck[i], spawnDeck[j]] = [spawnDeck[j], spawnDeck[i]];
+            }
+        }
+        return spawnDeck.pop();
+    }
+
+    function setNextTarget() {
+        if (currentRound === 3) {
+            let availableTypes = [...new Set(activeBlocks.filter(b => !b.isGarbage).map(b => b.type))];
+            if (availableTypes.length === 0) {
+                return;
+            }
+            let randomType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+            currentTarget = VOCAB_POOL.find(v => v.type === randomType);
+            document.getElementById("round-label").textContent = "Round 3: CLEAR THE GRID! Tap matching English word";
+            document.getElementById("target-display").textContent = currentTarget.japanese;
+            return;
+        }
+
+        currentTarget = VOCAB_POOL[Math.floor(Math.random() * VOCAB_POOL.length)];
+        const targetDisplay = document.getElementById("target-display");
+        const roundLabel = document.getElementById("round-label");
+
+        if (currentRound === 1) {
+            roundLabel.textContent = "Round 1: Tap matching Japanese word";
+            targetDisplay.textContent = currentTarget.english;
+        } else if (currentRound === 2) {
+            roundLabel.textContent = "Round 2: Tap matching English word";
+            targetDisplay.textContent = currentTarget.japanese;
+        }
+    }
+
+    function getRoundDuration(roundNumber) {
+        if (roundNumber === 1) return parseInt(document.getElementById("r1-time").value, 10);
+        if (roundNumber === 2) return parseInt(document.getElementById("r2-time").value, 10);
+        return parseInt(document.getElementById("r3-time").value, 10);
+    }
+
+    function startTimerForCurrentRound() {
+        clearInterval(timerInterval);
+        roundTimeRemaining = getRoundDuration(currentRound);
+        updateTimerDisplay();
+
+        timerInterval = setInterval(() => {
+            roundTimeRemaining--;
+            updateTimerDisplay();
+
+            if (roundTimeRemaining <= 0) {
+                handleRoundComplete();
+            }
+        }, 1000);
+    }
+
+    function updateTimerDisplay() {
+        let mins = Math.floor(roundTimeRemaining / 60);
+        let secs = roundTimeRemaining % 60;
+        document.getElementById("timer-display").textContent = 
+            `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function handleRoundComplete() {
+        clearInterval(timerInterval);
+        clearInterval(gameInterval);
+
+        if (currentRound === 1) roundScores.r1 = score;
+        else if (currentRound === 2) roundScores.r2 = score - roundScores.r1;
+        else if (currentRound === 3) roundScores.r3 = score - (roundScores.r1 + roundScores.r2);
+
+        if (currentRound === 1) {
+            currentRound = 2;
+            showNotification("Round 1 Complete! Starting Round 2...");
+            activeBlocks = [];
+            prefillBottomRows(2);
+            setNextTarget();
+            renderGrid();
+            startTimerForCurrentRound();
+            gameInterval = setInterval(gameLoop, 2000);
+        } else if (currentRound === 2) {
+            currentRound = 3;
+            showNotification("Round 2 Complete! Round 3 SPEED CLEAR Starting!");
+            activeBlocks = [];
+            fillEntireGridRound3();
+            setNextTarget();
+            renderGrid();
+            startTimerForCurrentRound();
+        } else {
+            stopGame();
+            showFinalResults();
+        }
+    }
+
+    function showFinalResults() {
+        document.getElementById("game-over-title").textContent = "Match Complete!";
+        const tallyBox = document.getElementById("score-tally-display");
+        let winnerMsg = "";
+        if (conn && conn.open) {
+            if (score > opponentScore) winnerMsg = `<div style="color:#2ecc71; font-weight:bold; font-size:1.2em; margin-bottom:8px;">🏆 YOU WIN!</div>`;
+            else if (score < opponentScore) winnerMsg = `<div style="color:#e74c3c; font-weight:bold; font-size:1.2em; margin-bottom:8px;">❌ OPPONENT WINS!</div>`;
+            else winnerMsg = `<div style="color:#f1c40f; font-weight:bold; font-size:1.2em; margin-bottom:8px;">🤝 IT'S A TIE!</div>`;
+        }
+        
+        tallyBox.innerHTML = `
+            ${winnerMsg}
+            <strong>Score Breakdown:</strong><br>
+            Round 1: ${roundScores.r1} pts<br>
+            Round 2: ${roundScores.r2} pts<br>
+            Round 3: ${roundScores.r3} pts<br>
+            <hr style="border: 0.5px solid #4a4e69; margin: 8px 0;">
+            <strong>Your Total: ${score} pts</strong><br>
+            ${conn && conn.open ? `Opponent Total: ${opponentScore} pts` : ''}
+        `;
+        document.getElementById("game-over-overlay").style.display = "flex";
+    }
+
+    function prefillBottomRows(rowsToFill = 2) {
+        spawnDeck = [];
+        for (let r = ROWS - 1; r >= ROWS - rowsToFill; r--) {
+            for (let c = 0; c < COLS; c++) {
+                let selected = getNextFromShuffleDeck();
+                let blockText = (currentRound === 1) ? selected.japanese : selected.english;
+
+                activeBlocks.push({
+                    text: blockText,
+                    type: selected.type,
+                    col: c,
+                    row: r,
+                    isGarbage: false,
+                    id: Date.now() + Math.random() + (r * COLS + c)
+                });
+            }
+        }
+    }
+
+    function fillEntireGridRound3() {
+        spawnDeck = [];
+        activeBlocks = [];
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                let selected = getNextFromShuffleDeck();
+                activeBlocks.push({
+                    text: selected.english,
+                    type: selected.type,
+                    col: c,
+                    row: r,
+                    isGarbage: false,
+                    id: Date.now() + Math.random() + (r * COLS + c)
+                });
+            }
+        }
+    }
+
+    function spawnBlock() {
+        if (currentRound === 3) return;
+
+        let selected = (Math.random() < 0.45) ? currentTarget : getNextFromShuffleDeck();
+        let blockText = (currentRound === 1) ? selected.japanese : selected.english;
+
+        let emptyCols = [];
+        for (let c = 0; c < COLS; c++) {
+            if (!activeBlocks.some(b => b.col === c && b.row === 0)) emptyCols.push(c);
+        }
+
+        if (emptyCols.length === 0) {
+            handleOverflow();
+            return;
+        }
+
+        let randomCol = emptyCols[Math.floor(Math.random() * emptyCols.length)];
+        activeBlocks.push({
+            text: blockText,
+            type: selected.type,
+            col: randomCol,
+            row: 0,
+            isGarbage: false,
+            id: Date.now() + Math.random()
+        });
+    }
+
+    function receiveGarbage(amount) {
+        showNotification(`INCOMING ATTACK! +${amount} Garbage Block(s)!`);
+        
+        for (let i = 0; i < amount; i++) {
+            let emptyCols = [];
+            for (let c = 0; c < COLS; c++) {
+                if (!activeBlocks.some(b => b.col === c && b.row === 0)) emptyCols.push(c);
+            }
+
+            if (emptyCols.length === 0) {
+                if (currentRound !== 3) handleOverflow();
+                return;
+            }
+
+            let randomCol = emptyCols[Math.floor(Math.random() * emptyCols.length)];
+            activeBlocks.push({
+                text: "GARBAGE",
+                type: "garbage",
+                col: randomCol,
+                row: 0,
+                isGarbage: true,
+                id: Date.now() + Math.random()
+            });
+        }
+        applyGravity();
+    }
+
+    function applyGravity() {
+        let moved = false;
+        activeBlocks.sort((a, b) => b.row - a.row);
+
+        activeBlocks.forEach(block => {
+            if (block.row < ROWS - 1) {
+                let hasBlockBelow = activeBlocks.some(b => b.col === block.col && b.row === block.row + 1);
+                if (!hasBlockBelow) {
+                    block.row += 1;
+                    moved = true;
+                }
+            }
+        });
+
+        if (moved) renderGrid();
+    }
+
+    function renderGrid() {
+        const grid = document.getElementById("grid-container");
+        const blocks = grid.querySelectorAll(".block");
+        blocks.forEach(b => b.remove());
+
+        activeBlocks.forEach(block => {
+            let el = document.createElement("div");
+            el.className = `block ${block.isGarbage ? 'garbage' : ''}`;
+            el.textContent = block.text;
+            
+            el.style.gridColumnStart = block.col + 1;
+            el.style.gridRowStart = block.row + 1;
+
+            el.onclick = () => handleBlockClick(block);
+            grid.appendChild(el);
+        });
+    }
+
+    function handleBlockClick(block) {
+        if (!isRunning || block.isGarbage) return;
+
+        if (block.type === currentTarget.type) {
+            streak++;
+            score += 10 + (streak * 2);
+            activeBlocks = activeBlocks.filter(b => b.id !== block.id);
+
+            broadcastScore();
+
+            if (currentRound === 3 && activeBlocks.filter(b => !b.isGarbage).length === 0) {
+                score += 100;
+                broadcastScore();
+                updateStats();
+                showNotification("PERFECT CLEAR! +100 BONUS!");
+                setTimeout(() => {
+                    handleRoundComplete();
+                }, 1000);
+                return;
+            }
+
+            sendGarbageCheck();
+
+            updateStats();
+            setNextTarget();
+            applyGravity();
+        } else {
+            streak = 0;
+            updateStats();
+        }
+    }
+
+    function sendGarbageCheck() {
+        let garbageCount = 0;
+        
+        if (streak === 3) {
+            garbageCount = 1;
+        } else if (streak === 4) {
+            garbageCount = 2;
+        } else if (streak >= 5) {
+            garbageCount = 3;
+            streak = 0;
+            showNotification("COMBO FINISHER! Streak reset!");
+        }
+
+        if (garbageCount > 0 && conn && conn.open) {
+            conn.send({
+                type: 'GARBAGE',
+                amount: garbageCount
+            });
+            if (streak !== 0) {
+                showNotification(`ATTACK! Sent ${garbageCount} Garbage Block(s)!`);
+            }
+        }
+    }
+
+    function showNotification(msg) {
+        const banner = document.getElementById("notification-banner");
+        banner.textContent = msg;
+        banner.style.display = "block";
+        setTimeout(() => {
+            banner.style.display = "none";
+        }, 2000);
+    }
+
+    function handleOverflow() {
+        stopGame();
+        document.getElementById("game-over-title").textContent = "Grid Overflow!";
+        document.getElementById("score-tally-display").textContent = `Final Total: ${score} pts`;
+        document.getElementById("game-over-overlay").style.display = "flex";
+    }
+
+    function updateStats() {
+        document.getElementById("score-display").textContent = score;
+        document.getElementById("streak-display").textContent = streak;
+    }
+
+    function gameLoop() {
+        applyGravity();
+        spawnBlock();
+    }
+
+    function startGame() {
+        if (isRunning) return;
+        isRunning = true;
+        currentRound = 1;
+        score = 0;
+        streak = 0;
+        roundScores = { r1: 0, r2: 0, r3: 0 };
+        
+        document.getElementById("start-btn").style.display = "none";
+        document.getElementById("game-over-overlay").style.display = "none";
+        
+        broadcastScore();
+        setNextTarget();
+        prefillBottomRows(2);
+        renderGrid();
+
+        startTimerForCurrentRound();
+        gameInterval = setInterval(gameLoop, 2000);
+    }
+
+    function stopGame() {
+        isRunning = false;
+        clearInterval(gameInterval);
+        clearInterval(timerInterval);
+        document.getElementById("start-btn").style.display = "block";
+    }
+
+    function resetGame() {
+        stopGame();
+        activeBlocks = [];
+        score = 0;
+        streak = 0;
+        updateStats();
+        startGame();
+    }
+
+    window.onload = initPeer;
+</script>
+
+</body>
+</html>
