@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sentence Battle - WebRTC 2P</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        /* Screen Container Management */
+        .screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            max-width: 380px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* UI Cards & Admin Styles */
+        .card {
+            background-color: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            margin-bottom: 12px;
+        }
+
+        .form-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+
+        input[type="number"], select {
+            background-color: #334155;
+            border: 1px solid #475569;
+            color: #ffffff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            width: 80px;
+            text-align: center;
+        }
+
+        .btn {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 18px;
+            margin: 8px 0;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: bold;
+            width: 100%;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        .btn:hover { background-color: #1d4ed8; }
+        .btn:active { transform: scale(0.98); }
+        .btn-vs { background-color: #dc2626; }
+        .btn-vs:hover { background-color: #b91c1c; }
+
+        /* Tetris Matrix Container */
+        .tetris-matrix {
+            position: relative;
+            width: 320px;
+            height: 500px;
+            background-color: #1e293b;
+            border: 4px solid #334155;
+            border-radius: 8px;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        /* Strict Grid Word Block Styling */
+        .word-block {
+            position: absolute;
+            box-sizing: border-box;
+            width: 62px;  /* 64px column width minus 2px gutter margin */
+            height: 50px; /* Uniform height across all blocks */
+            
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            
+            white-space: normal;
+            word-break: break-word;
+            line-height: 1.1;
+            padding: 2px 4px;
+            
+            font-size: clamp(9px, 2.5vw, 13px);
+            font-weight: bold;
+            color: #ffffff;
+            
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: transform 0.05s ease;
+        }
+
+        .word-block:active { transform: scale(0.95); }
+
+        /* Parts-of-speech & block types */
+        .type-object { background-color: #059669; }      /* Green */
+        .type-verb { background-color: #dc2626; }        /* Red */
+        .type-preposition { background-color: #d97706; } /* Amber */
+        .type-garbage { background-color: #4b5563; }     /* Gray */
+
+        /* Animation for correctly tapped blocks */
+        .block-pop-out {
+            animation: popOut 0.25s ease-out forwards;
+            pointer-events: none;
+        }
+
+        @keyframes popOut {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0px #10b981;
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.25);
+                box-shadow: 0 0 20px #10b981;
+                background-color: #10b981;
+                opacity: 0.9;
+            }
+            100% {
+                transform: scale(0);
+                opacity: 0;
+            }
+        }
+
+        /* Header & Control UI */
+        .header-panel {
+            width: 100%;
+            max-width: 320px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .target-box {
+            background-color: #334155;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 5px;
+        }
+
+        #target-word {
+            font-size: 18px;
+            font-weight: bold;
+            color: #38bdf8;
+        }
+
+        .controls-hint {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+
+        .qr-box {
+            background-color: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 12px auto;
+            display: inline-block;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+    <!-- 1. ADMIN CONFIGURATION SCREEN -->
+    <div id="admin-screen" class="screen">
+        <div class="card">
+            <h2>⚙️ Game Setup (Admin)</h2>
+            <p style="color: #94a3b8; font-size: 12px; margin-bottom: 12px;">Configure match rules before launching</p>
+
+            <div class="form-group">
+                <label>Round Duration (sec):</label>
+                <input type="number" id="cfg-duration" value="60" min="10" max="300">
+            </div>
+            <div class="form-group">
+                <label>Fall Speed (ms):</label>
+                <input type="number" id="cfg-speed" value="1200" step="100" min="200">
+            </div>
+            <div class="form-group">
+                <label>Garbage Trigger Streak:</label>
+                <input type="number" id="cfg-garbage-streak" value="3" min="1">
+            </div>
+
+            <button class="btn" onclick="generateAdminQR()">Generate Player 1 QR</button>
+        </div>
+
+        <div id="admin-qr-card" class="card hidden">
+            <h3>Player 1 Join QR</h3>
+            <div id="admin-qr-container" class="qr-box"></div>
+            <p style="font-size: 12px; color: #94a3b8;">Scan with Player 1's mobile device</p>
+        </div>
+    </div>
+
+    <!-- 2. MODE SELECTION MENU SCREEN (P1) -->
+    <div id="menu-screen" class="screen hidden">
+        <div class="card">
+            <h1 style="margin-bottom: 6px;">Sentence Battle</h1>
+            <p style="color: #94a3b8; margin-bottom: 16px;">Select Game Mode</p>
+            <button class="btn" onclick="startSinglePlayer()">1 Player (Solo)</button>
+            <button class="btn btn-vs" onclick="showPlayer2QR()">2 Player (VS Battle)</button>
+        </div>
+    </div>
+
+    <!-- 3. PLAYER 2 QR CONNECT SCREEN -->
+    <div id="qr-screen" class="screen hidden">
+        <div class="card">
+            <h2>Player 2 Connect</h2>
+            <p style="color: #94a3b8; font-size: 13px; margin-top: 4px;">Scan this QR code with Player 2's device</p>
+            <div id="p2-qr-container" class="qr-box"></div>
+            <p id="p2-status" style="color: #f59e0b; font-size: 14px; font-weight: bold;">Waiting for Player 2...</p>
+            <button class="btn" style="background-color: #475569; margin-top: 12px;" onclick="backToMenu()">Back to Menu</button>
+        </div>
+    </div>
+
+    <!-- 4. GAME SCREEN -->
+    <div id="game-screen" class="screen hidden">
+        <div class="header-panel">
+            <h2>Sentence Battle</h2>
+            <div class="target-box">
+                <span id="target-label">Target:</span>
+                <div id="target-word">--</div>
+            </div>
+            <div class="controls-hint">Desktop: Keys 1-5 | Mobile: Tap columns</div>
+        </div>
+
+        <div class="tetris-matrix" id="matrix"></div>
+    </div>
+
+    <script>
+        /* ----------------------------------------------------
+           1. Web Audio API Synthesizer
+           ---------------------------------------------------- */
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'match') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.1);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'win') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.setValueAtTime(554.37, now + 0.1);
+                osc.frequency.setValueAtTime(659.25, now + 0.2);
+                osc.frequency.setValueAtTime(880, now + 0.3);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            }
+        }
+
+        /* ----------------------------------------------------
+           2. App Routing & State Management
+           ---------------------------------------------------- */
+        let gameConfig = { duration: 60, speed: 1200, garbageStreak: 3 };
+        let isMultiplayer = false;
+        let peer = null;
+        let conn = null;
+
+        let currentRound = 1;
+        let activeBlocks = [];
+        let currentTarget = null;
+        let gameInterval = null;
+
+        const MATRIX_WIDTH = 320;
+        const TOTAL_COLUMNS = 5;
+        const COL_WIDTH = MATRIX_WIDTH / TOTAL_COLUMNS; // 64px
+        const BLOCK_HEIGHT = 50; // Strict row height
+
+        const wordPool = [
+            { english: "apple", japanese: "りんご", type: "object" },
+            { english: "eat", japanese: "食べる", type: "verb" },
+            { english: "in", japanese: "〜の中に", type: "preposition" },
+            { english: "run", japanese: "走る", type: "verb" },
+            { english: "book", japanese: "本", type: "object" },
+            { english: "read", japanese: "読む", type: "verb" },
+            { english: "under", japanese: "〜の下に", type: "preposition" },
+            { english: "cat", japanese: "猫", type: "object" }
+        ];
+
+        function showScreen(screenId) {
+            ['admin-screen', 'menu-screen', 'qr-screen', 'game-screen'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(screenId).classList.remove('hidden');
+        }
+
+        function generateAdminQR() {
+            gameConfig.duration = parseInt(document.getElementById('cfg-duration').value);
+            gameConfig.speed = parseInt(document.getElementById('cfg-speed').value);
+            gameConfig.garbageStreak = parseInt(document.getElementById('cfg-garbage-streak').value);
+
+            const container = document.getElementById('admin-qr-container');
+            container.innerHTML = '';
+            
+            const launchUrl = window.location.href.split('?')[0] + '?p=1&cfg=' + btoa(JSON.stringify(gameConfig));
+            new QRCode(container, { text: launchUrl, width: 160, height: 160 });
+            document.getElementById('admin-qr-card').classList.remove('hidden');
+        }
+
+        function startSinglePlayer() {
+            isMultiplayer = false;
+            showScreen('game-screen');
+            startGameLoop();
+        }
+
+        function showPlayer2QR() {
+            isMultiplayer = true;
+            showScreen('qr-screen');
+            initHostPeer();
+        }
+
+        function backToMenu() {
+            if (peer) peer.destroy();
+            showScreen('menu-screen');
+        }
+
+        function initHostPeer() {
+            const hostId = 'sb-' + Math.random().toString(36).substring(2, 8);
+            peer = new Peer(hostId);
+
+            peer.on('open', (id) => {
+                const qrContainer = document.getElementById('p2-qr-container');
+                qrContainer.innerHTML = '';
+                const joinUrl = window.location.href.split('?')[0] + '?join=' + id + '&cfg=' + btoa(JSON.stringify(gameConfig));
+                new QRCode(qrContainer, { text: joinUrl, width: 160, height: 160 });
+            });
+
+            peer.on('connection', (connection) => {
+                conn = connection;
+                document.getElementById('p2-status').innerText = 'Player 2 Connected! Starting...';
+                document.getElementById('p2-status').style.color = '#10b981';
+
+                setTimeout(() => {
+                    showScreen('game-screen');
+                    startGameLoop();
+                }, 1000);
+            });
+        }
+
+        /* ----------------------------------------------------
+           3. Game Engine & Block Spawner
+           ---------------------------------------------------- */
+        function startGameLoop() {
+            setNextTarget();
+            if (gameInterval) clearInterval(gameInterval);
+            gameInterval = setInterval(spawnBlock, gameConfig.speed);
+        }
+
+        function spawnBlock() {
+            const col = Math.floor(Math.random() * TOTAL_COLUMNS);
+            const pool = wordPool;
+            const wordObj = pool[Math.floor(Math.random() * pool.length)];
+
+            // Select display text based on current round setup
+            const text = (currentRound === 1) ? wordObj.japanese : wordObj.english;
+
+            const blockData = {
+                id: Math.random().toString(36).substring(2, 9),
+                col: col,
+                row: 0,
+                text: text,
+                type: wordObj.type,
+                isAnimating: false,
+                element: null
+            };
+
+            createBlockElement(blockData);
+            activeBlocks.push(blockData);
+            
+            // Check target availability in Round 3
+            if (currentRound === 3) setNextTarget();
+        }
+
+        function createBlockElement(blockData) {
+            const el = document.createElement('div');
+            el.className = `word-block type-${blockData.type || 'object'}`;
+            el.innerText = blockData.text;
+
+            const leftPos = blockData.col * COL_WIDTH + 1;
+            const topPos = blockData.row * BLOCK_HEIGHT;
+
+            el.style.left = `${leftPos}px`;
+            el.style.top = `${topPos}px`;
+
+            el.addEventListener('click', () => handleBlockClick(blockData));
+
+            blockData.element = el;
+            document.getElementById('matrix').appendChild(el);
+            return el;
+        }
+
+        /* ----------------------------------------------------
+           4. Game Interaction & Targets
+           ---------------------------------------------------- */
+        function setNextTarget() {
+            const pool = wordPool;
+
+            if (currentRound === 3) {
+                if (activeBlocks.length === 0) return;
+
+                const availableTexts = activeBlocks.filter(b => !b.isGarbage).map(b => b.text);
+                const validItems = pool.filter(item =>
+                    availableTexts.includes(item.english) || availableTexts.includes(item.japanese)
+                );
+
+                if (validItems.length > 0) {
+                    currentTarget = validItems[Math.floor(Math.random() * validItems.length)];
+                } else {
+                    currentTarget = pool[Math.floor(Math.random() * pool.length)];
+                }
+            } else {
+                currentTarget = pool[Math.floor(Math.random() * pool.length)];
+            }
+
+            const label = document.getElementById('target-label');
+            const word = document.getElementById('target-word');
+
+            if (currentRound === 1) {
+                label.innerText = "Target (English):";
+                word.innerText = currentTarget ? currentTarget.english : "--";
+            } else {
+                label.innerText = "Target (Japanese):";
+                word.innerText = currentTarget ? currentTarget.japanese : "--";
+            }
+        }
+
+        function handleBlockClick(block) {
+            if (!currentTarget || block.isAnimating) return;
+
+            let isCorrect = false;
+            if (currentRound === 1) {
+                isCorrect = (block.text === currentTarget.japanese);
+            } else {
+                isCorrect = (block.text === currentTarget.english);
+            }
+
+            if (isCorrect) {
+                playSound('match');
+                block.isAnimating = true;
+
+                animateAndRemoveBlock(block);
+                setNextTarget();
+            } else {
+                playSound('error');
+            }
+        }
+
+        function animateAndRemoveBlock(block) {
+            if (block.element) {
+                block.element.classList.add('block-pop-out');
+                setTimeout(() => {
+                    removeBlock(block);
+                }, 250);
+            } else {
+                removeBlock(block);
+            }
+        }
+
+        function removeBlock(targetBlock) {
+            activeBlocks = activeBlocks.filter(b => b !== targetBlock);
+            if (targetBlock.element && targetBlock.element.parentNode) {
+                targetBlock.element.parentNode.removeChild(targetBlock.element);
+            }
+        }
+
+        function handleColumnInput(colIndex) {
+            const colBlocks = activeBlocks
+                .filter(b => b.col === colIndex)
+                .sort((a, b) => b.row - a.row);
+
+            if (colBlocks.length > 0) {
+                handleBlockClick(colBlocks[0]);
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.key;
+            if (key >= '1' && key <= '5') {
+                const colIndex = parseInt(key) - 1;
+                handleColumnInput(colIndex);
+            }
+        });
+
+        /* ----------------------------------------------------
+           5. URL Direct Launch Routing
+           ---------------------------------------------------- */
+        const urlParams = new URLSearchParams(window.location.search);
+        const p1Param = urlParams.get('p');
+        const joinId = urlParams.get('join');
+        const encodedCfg = urlParams.get('cfg');
+
+        if (encodedCfg) {
+            try { gameConfig = JSON.parse(atob(encodedCfg)); } catch(e) {}
+        }
+
+        if (p1Param === '1') {
+            // Player 1 scanned Admin QR code -> show Mode Menu
+            showScreen('menu-screen');
+        } else if (joinId) {
+            // Player 2 scanned Player 1 QR code -> direct to game
+            showScreen('game-screen');
+            const clientPeer = new Peer();
+            clientPeer.on('open', () => {
+                clientPeer.connect(joinId);
+                startGameLoop();
+            });
+        }
+    </script>
+</body>
+</html>
